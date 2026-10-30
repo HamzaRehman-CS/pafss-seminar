@@ -1,0 +1,16 @@
+{
+  "name": "ai-healthcare-seminar-web",
+  "version": "1.0.0",
+  "description": "Seminar on AI and Healthcare - Official Portal & Ticket Verification System",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "pg": "^8.23.1"
+  }
+}

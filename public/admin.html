@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Organizer &amp; Admin Gate Portal | PAF-IAST Science Society</title>
+  <meta name="description" content="Official Admin & Gate QR Verification Portal for PAF-IAST Science Society Seminars.">
+  <link rel="icon" type="image/png" href="assets/society_logo.png">
+
+  <!-- Apple & Google Modern Clean Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+
+  <!-- HTML5 QR Code Scanner Library -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="admin-page-body">
+
+  <!-- Ambient Blurry Splashes Background -->
+  <div class="ambient-bg-container" aria-hidden="true">
+    <div class="splash-orb orb-sky"></div>
+    <div class="splash-orb orb-orange"></div>
+    <div class="splash-orb orb-royal"></div>
+    <div class="splash-orb orb-white"></div>
+  </div>
+
+  <!-- Admin Top Navbar -->
+  <header class="glass-navbar">
+    <div class="nav-inner">
+      <div class="nav-logos-cluster">
+        <img src="assets/university_logo.png" alt="PAF-IAST University" class="nav-logo-pic">
+        <div class="nav-divider-line"></div>
+        <img src="assets/society_logo.png" alt="PAF-IAST Science Society" class="nav-logo-pic">
+        <div class="nav-headings">
+          <span class="nav-main-title">PAF-IAST Science Society</span>
+          <span class="nav-sub-title">Organizer Gate &amp; QR Control • B2 MPH</span>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <a href="/" class="glass-btn glass-btn-subtle" style="font-size: 0.82rem; padding: 7px 16px;">
+          ← Public Portal
+        </a>
+        <button id="btn-admin-signout" class="glass-btn glass-btn-subtle" onclick="adminSignOut()" style="display: none; font-size: 0.82rem; padding: 7px 16px;">
+          Sign Out
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="admin-main-container">
+    
+    <!-- 1. LOGIN SCREEN (When Unauthenticated) -->
+    <div class="admin-login-wrapper" id="admin-login-screen">
+      <div class="admin-login-glass-card">
+        <div class="admin-lock-icon">🛡️</div>
+        <h2>Admin Gate Authorization</h2>
+        <p>Please enter your organizer credentials to access attendee records and gate scanning.</p>
+
+        <form id="admin-login-form" onsubmit="handleLoginSubmit(event)">
+          <div class="glass-form-group" style="text-align: left;">
+            <label for="admin-id-input" class="glass-field-label">Organizer ID</label>
+            <input type="text" id="admin-id-input" required class="clean-glass-input" autocomplete="username">
+          </div>
+
+          <div class="glass-form-group" style="text-align: left;">
+            <label for="admin-pass-input" class="glass-field-label">Password</label>
+            <input type="password" id="admin-pass-input" required class="clean-glass-input" autocomplete="current-password">
+          </div>
+
+          <button type="submit" class="glass-btn glass-btn-orange" style="width: 100%; padding: 12px; margin-top: 10px;">
+            <span>Unlock Admin Portal</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </form>
+
+        <div class="admin-hint-strip">
+          🔑 ID: <code>pafss26</code> | Pass: <code>seminar</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. DASHBOARD SCREEN (When Authenticated) -->
+    <div class="admin-dashboard-container" id="admin-dashboard-screen" style="display: none;">
+      
+      <!-- Live Overview Stats Row -->
+      <div class="admin-stats-grid-row">
+        <div class="admin-stat-card">
+          <span class="stat-card-label">Seminar 1 (AMR - Nov 4)</span>
+          <span class="stat-card-number" id="dash-sem1-count">0</span>
+          <span class="stat-card-sub">Dr. Hamad Ali • 2 to 4 PM</span>
+        </div>
+
+        <div class="admin-stat-card">
+          <span class="stat-card-label">Seminar 2 (AI Health - Nov 5)</span>
+          <span class="stat-card-number" id="dash-sem2-count">0</span>
+          <span class="stat-card-sub">Dr. Shah Faisal • 2 to 4 PM</span>
+        </div>
+
+        <div class="admin-stat-card">
+          <span class="stat-card-label">Checked In / Admitted</span>
+          <span class="stat-card-number" id="dash-checked-count" style="color: #059669;">0</span>
+          <span class="stat-card-sub">Admitted at B2 MPH entrance</span>
+        </div>
+
+        <div class="admin-stat-card">
+          <span class="stat-card-label">Total Registered</span>
+          <span class="stat-card-number" id="dash-total-count">0</span>
+          <span class="stat-card-sub">Active Neon database profiles</span>
+        </div>
+      </div>
+
+      <!-- Admin Main Split Layout -->
+      <div class="admin-split-workspace">
+        
+        <!-- Left: Live QR Gate Scanner & Live Preview -->
+        <section class="admin-scanner-column">
+          <div class="admin-section-box">
+            <div class="box-head-row">
+              <h3>📷 Gate QR Code Scanner</h3>
+              <span id="admin-clock" class="admin-live-clock">--:--:--</span>
+            </div>
+
+            <!-- Camera Viewfinder -->
+            <div id="admin-qr-reader" class="scanner-camera-viewfinder"></div>
+
+            <div style="display: flex; gap: 8px; margin: 12px 0;">
+              <button class="glass-btn glass-btn-sky" id="btn-camera-toggle" onclick="toggleCameraScanner()" style="flex: 1;">
+                Start Camera Scan
+              </button>
+            </div>
+
+            <!-- Manual Ticket ID Input Fallback -->
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="manual-ticket-id" placeholder="Ticket ID (e.g. AMR-26-001)" class="clean-glass-input" style="padding: 9px 12px; font-size: 0.88rem;">
+              <button class="glass-btn glass-btn-orange" onclick="processManualEntry()" style="padding: 9px 16px; font-size: 0.88rem;">
+                Scan
+              </button>
+            </div>
+
+            <!-- Real-Time Scanner Result Preview Box (Green Tick / Duplicate Alert) -->
+            <div class="scanner-result-preview-wrap">
+              <div id="scan-result-card" class="scan-result-card" style="display: none;">
+                <div class="scan-status-banner" id="scan-result-banner"></div>
+                <div class="preview-attendee-details" id="scan-result-details"></div>
+              </div>
+
+              <div id="scan-result-placeholder" class="scan-placeholder-text">
+                Point camera at an attendee's QR ticket or enter their ticket ID to verify gate entry.
+              </div>
+            </div>
+
+            <!-- Live Scanned History Log -->
+            <div class="scan-history-section">
+              <div class="history-head-row">
+                <span>Live Scanned History</span>
+                <button class="glass-btn-subtle" onclick="clearLiveScanLog()" style="padding: 2px 8px; font-size: 0.7rem; border-radius: 4px; cursor: pointer;">
+                  Clear Log
+                </button>
+              </div>
+              <div class="history-items-container" id="admin-scan-history-list"></div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Right: Registered Attendees Directory -->
+        <section class="admin-directory-column">
+          <div class="admin-section-box">
+            <div class="box-head-row">
+              <h3>📋 Registered Attendees Directory</h3>
+              <button class="glass-btn glass-btn-subtle" onclick="exportDirectoryCSV()" style="padding: 6px 14px; font-size: 0.8rem;">
+                Export CSV
+              </button>
+            </div>
+
+            <!-- Search and Filter Bar -->
+            <div class="dir-filters-bar">
+              <input type="text" id="dir-search-input" placeholder="Search by name, university ID, ticket, email..." oninput="handleDirectorySearch()" class="clean-glass-input" style="max-width: 340px; padding: 8px 14px; font-size: 0.85rem;">
+              
+              <div class="dir-pills-row">
+                <button class="admin-filter-pill active" id="pill-all" onclick="setFilter('all', this)">All</button>
+                <button class="admin-filter-pill" id="pill-sem1" onclick="setFilter('seminar1', this)">AMR (Nov 4)</button>
+                <button class="admin-filter-pill" id="pill-sem2" onclick="setFilter('seminar2', this)">AI (Nov 5)</button>
+                <button class="admin-filter-pill" id="pill-checked" onclick="setFilter('checked', this)">Checked In</button>
+              </div>
+            </div>
+
+            <!-- Attendees Table Container -->
+            <div class="admin-table-scroll-wrap">
+              <table class="admin-data-table">
+                <thead>
+                  <tr>
+                    <th>Unique ID</th>
+                    <th>Attendee Name</th>
+                    <th>University ID</th>
+                    <th>Phone</th>
+                    <th>Personal Gmail</th>
+                    <th>Seminar Event</th>
+                    <th>Gate Status</th>
+                  </tr>
+                </thead>
+                <tbody id="directory-tbody">
+                  <!-- Dynamically populated from Neon DB -->
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+        </section>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <script src="admin.js"></script>
+</body>
+</html>
+
