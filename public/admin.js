@@ -370,59 +370,89 @@ let lastScannedTimestamp = 0;
 async function processTicketScan(ticketCode) {
   const now = Date.now();
   if (ticketCode === lastScannedText && now - lastScannedTimestamp < 2500) {
-    return; // throttle duplicate trigger
+    return; // throttle duplicate rapid trigger
   }
   lastScannedText = ticketCode;
   lastScannedTimestamp = now;
 
-  const clean = ticketCode.trim().toUpperCase();
+  let clean = String(ticketCode || '').trim();
+  const urlMatch = clean.match(/(AMR-26-\d+|AIH-26-\d+)/i);
+  if (urlMatch) {
+    clean = urlMatch[1];
+  }
+  const cleanUpper = clean.toUpperCase();
 
-  // 1. Instant check in local cache (Works even without internet!)
+  // 1. Instant check in local cache ONLY by ticket ID or ticketHash
+  // (Strictly excludes university IDs or arbitrary text)
   const localMatch = localAttendeeCache.find(a => 
-    (a.id && a.id.toUpperCase() === clean) ||
-    (a.ticketHash && a.ticketHash.toUpperCase() === clean) ||
-    (a.universityId && a.universityId.toUpperCase() === clean) ||
-    (a.university_id && a.university_id.toUpperCase() === clean)
+    (a.id && a.id.toUpperCase() === cleanUpper) ||
+    (a.ticketHash && a.ticketHash.toUpperCase() === cleanUpper)
   );
 
   if (localMatch) {
     if (localMatch.checkedIn) {
-      // ALREADY SCANNED ONCE (Duplicate alert)
+      // ALREADY SCANNED ONCE (Warning / Amber alert with person's name)
       playSound('warning');
-      const timeStr = localMatch.checkedInAt ? new Date(localMatch.checkedInAt).toLocaleTimeString() : 'Earlier';
+      const timeStr = localMatch.checkedInAt 
+        ? new Date(localMatch.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
+        : 'Earlier';
+      
+      const newCount = Number(localMatch.scanCount || 1) + 1;
+      localMatch.scanCount = newCount;
+
       renderPreviewResult({
         status: 'ALREADY_SCANNED',
         attendee: localMatch,
-        checkedInAt: localMatch.checkedInAt
+        checkedInAt: localMatch.checkedInAt,
+        scanCount: newCount,
+        message: `⚠️ Already Scanned! ${localMatch.name} was already admitted at ${timeStr}.`
       });
-      syncScanToServer(clean);
+      syncScanToServer(cleanUpper);
       return;
     } else {
-      // FIRST TIME SCAN -> Instant local admission
+      // FIRST TIME SCAN -> Instant Green Admission with person's name
       playSound('success');
       const scanTime = new Date().toISOString();
       localMatch.checkedIn = true;
       localMatch.checkedInAt = scanTime;
+      localMatch.scanCount = 1;
+
       renderPreviewResult({
         status: 'FIRST_CHECKIN',
         attendee: localMatch,
-        message: `PASS VERIFIED: ${localMatch.name} admitted successfully!`
+        message: `✅ Admitted: ${localMatch.name}`
       });
-      syncScanToServer(clean);
+
+      // Update directory table instantly
+      renderDirectoryTable(localAttendeeCache);
+      syncScanToServer(cleanUpper);
       return;
     }
   }
 
-  // 2. If not found in local cache, send directly to server
+  // 2. If not matched in local cache, query server endpoint
   try {
     const res = await fetch('/api/scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticketId: clean })
+      body: JSON.stringify({ ticketId: cleanUpper })
     });
 
     const result = await res.json();
-    renderPreviewResult(result);
+    if (!res.ok || result.status === 'INVALID') {
+      playSound('error');
+      renderPreviewResult({
+        status: 'INVALID',
+        message: result.message || `Wrong code! "${cleanUpper}" is not recognized as a registered participant pass.`
+      });
+    } else {
+      if (result.status === 'FIRST_CHECKIN') {
+        playSound('success');
+      } else if (result.status === 'ALREADY_SCANNED') {
+        playSound('warning');
+      }
+      renderPreviewResult(result);
+    }
     fetchDashboardData();
     loadScanHistory();
 
@@ -430,7 +460,7 @@ async function processTicketScan(ticketCode) {
     playSound('error');
     renderPreviewResult({
       status: 'INVALID',
-      message: `Invalid or unrecognized QR code: "${clean}"`
+      message: `Wrong code! "${cleanUpper}" is not recognized as a participant pass.`
     });
   }
 }
@@ -464,50 +494,69 @@ function renderPreviewResult(result) {
   previewCard.className = 'scan-result-card';
 
   if (result.status === 'FIRST_CHECKIN') {
+    // 1. GREEN COLOR: Name, checkmark, admission recorded
     previewCard.classList.add('scan-first-time');
+    const a = result.attendee || {};
+    const univid = a.universityId || a.university_id || 'N/A';
+    const attendeeName = a.name || 'Participant';
+
     banner.innerHTML = `
-      <span style="font-size: 1.3rem;">✅</span>
-      <span>${result.message || 'PASS VERIFIED &amp; ADMITTED'}</span>
+      <span style="font-size: 1.4rem;">✅</span>
+      <span>Admitted: ${attendeeName}</span>
     `;
 
-    const a = result.attendee;
-    const univid = a.universityId || a.university_id || 'N/A';
     details.innerHTML = `
-      <div><strong>Attendee Name:</strong> ${a.name}</div>
+      <div style="font-size: 0.95rem; font-weight: 800; color: #047857; margin-bottom: 6px;">
+        ${attendeeName} has just been scanned and recorded in the attendance list.
+      </div>
+      <div><strong>Participant Name:</strong> ${attendeeName}</div>
       <div><strong>University ID:</strong> ${univid}</div>
-      <div><strong>Seminar:</strong> ${a.speaker} • B2 MPH</div>
+      <div><strong>Seminar:</strong> ${a.speaker || (a.seminar === 'seminar1' ? 'Dr. Hamad Ali (AMR)' : 'Dr. Shah Faisal (AI Health)')} • B2 MPH</div>
       <div><strong>Ticket ID:</strong> <code>${a.id}</code></div>
-      <div><strong>Verified Time:</strong> ${new Date(a.checkedInAt || Date.now()).toLocaleTimeString()}</div>
+      <div><strong>Check-In Timestamp:</strong> ${new Date(a.checkedInAt || Date.now()).toLocaleTimeString()}</div>
     `;
 
   } else if (result.status === 'ALREADY_SCANNED') {
+    // 2. AMBER / WARNING COLOR: Already scanned, with person's name
     previewCard.classList.add('scan-already-checked');
-    const checkedTime = result.checkedInAt ? new Date(result.checkedInAt).toLocaleTimeString() : 'Earlier';
+    const a = result.attendee || {};
+    const univid = a.universityId || a.university_id || 'N/A';
+    const attendeeName = a.name || 'Participant';
+    const checkedTime = result.checkedInAt 
+      ? new Date(result.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
+      : 'Earlier';
 
     banner.innerHTML = `
-      <span style="font-size: 1.3rem;">⚠️</span>
-      <span>ALREADY SCANNED ONCE! (Admitted at ${checkedTime})</span>
+      <span style="font-size: 1.4rem;">⚠️</span>
+      <span>Already Scanned: ${attendeeName}</span>
     `;
 
-    const a = result.attendee;
-    const univid = a.universityId || a.university_id || 'N/A';
     details.innerHTML = `
-      <div style="color: #B45309; font-weight: 800;">⚠️ DUPLICATE ENTRY ATTEMPT</div>
-      <div><strong>Attendee Name:</strong> ${a.name}</div>
+      <div style="font-size: 0.95rem; font-weight: 800; color: #B45309; margin-bottom: 6px;">
+        ⚠️ This ticket was already scanned! ${attendeeName} was admitted earlier.
+      </div>
+      <div><strong>Participant Name:</strong> ${attendeeName}</div>
       <div><strong>University ID:</strong> ${univid}</div>
-      <div><strong>Seminar:</strong> ${a.speaker} • B2 MPH</div>
+      <div><strong>Seminar:</strong> ${a.speaker || (a.seminar === 'seminar1' ? 'Dr. Hamad Ali (AMR)' : 'Dr. Shah Faisal (AI Health)')} • B2 MPH</div>
       <div><strong>Ticket ID:</strong> <code>${a.id}</code></div>
-      <div><strong>Initial Check-In:</strong> ${checkedTime}</div>
+      <div><strong>Original Check-In:</strong> ${checkedTime}</div>
+      <div><strong>Total Scan Attempts:</strong> ${result.scanCount || a.scanCount || 2}</div>
     `;
 
   } else {
+    // 3. RED COLOR: Wrong code / not recognized / declined
     previewCard.classList.add('scan-invalid');
     banner.innerHTML = `
-      <span style="font-size: 1.3rem;">❌</span>
-      <span>INVALID QR CODE / TICKET NOT FOUND</span>
+      <span style="font-size: 1.4rem;">❌</span>
+      <span>Wrong Code / Access Declined</span>
     `;
     details.innerHTML = `
-      <div style="color: #B91C1C;">${result.message || 'The scanned QR code is not recognized in the database.'}</div>
+      <div style="font-size: 0.92rem; font-weight: 800; color: #B91C1C; margin-bottom: 4px;">
+        Wrong code! Unrecognized QR code.
+      </div>
+      <div style="color: #64748B; font-size: 0.82rem;">
+        ${result.message || 'Only official seminar tickets generated by this portal are accepted.'}
+      </div>
     `;
   }
 }

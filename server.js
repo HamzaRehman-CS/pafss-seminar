@@ -326,45 +326,55 @@ app.post('/api/admin/login', (req, res) => {
   });
 });
 
-// 5. QR Gate Scanner & Verification (Neon DB Powered + Duplicate Alert)
+// 5. QR Gate Scanner & Verification (Neon DB Powered + Strict Participant Verification)
 app.post('/api/scan', async (req, res) => {
   const { ticketId } = req.body;
   if (!ticketId) {
     return res.status(400).json({ success: false, status: 'INVALID', message: "Ticket ID is required" });
   }
 
-  const cleanTicket = String(ticketId).trim().toUpperCase();
+  // Extract pure ticket ID if URL was scanned
+  let cleanTicket = String(ticketId).trim();
+  const urlMatch = cleanTicket.match(/(AMR-26-\d+|AIH-26-\d+)/i);
+  if (urlMatch) {
+    cleanTicket = urlMatch[1];
+  }
+  const cleanTicketUpper = cleanTicket.toUpperCase();
 
   try {
-    // Search attendee in Neon Database
+    // Search attendee in Neon Database ONLY by ticket id or ticket_hash
+    // (Strictly excludes university IDs or arbitrary keywords)
     const findRes = await pool.query(
       `SELECT * FROM attendees 
        WHERE UPPER(id) = $1 
           OR UPPER(ticket_hash) = $1 
-          OR UPPER(university_id) = $1 
        LIMIT 1`,
-      [cleanTicket]
+      [cleanTicketUpper]
     );
 
-    // If Ticket NOT Found
+    // If Ticket NOT Found / Wrong Code -> Reject with RED invalid alert
     if (findRes.rows.length === 0) {
       const scanId = `SCAN-${Date.now()}`;
-      await pool.query(
-        `INSERT INTO scan_history (scan_id, scanned_at, ticket_id, attendee_name, university_id, seminar, status, message)
-         VALUES ($1, NOW(), $2, 'Unknown / Unregistered', 'N/A', 'N/A', 'INVALID', 'Ticket ID not recognized in database')`,
-        [scanId, cleanTicket]
-      );
+      try {
+        await pool.query(
+          `INSERT INTO scan_history (scan_id, scanned_at, ticket_id, attendee_name, university_id, seminar, status, message)
+           VALUES ($1, NOW(), $2, 'Unknown / Unregistered', 'N/A', 'N/A', 'INVALID', 'Wrong code! Not a registered seminar pass')`,
+          [scanId, cleanTicketUpper]
+        );
+      } catch (e) {
+        console.warn("Scan history insert error:", e.message);
+      }
 
       const invalidLog = {
         scanId,
         scanned_at: new Date().toISOString(),
         timestamp: new Date().toISOString(),
-        ticketId: cleanTicket,
+        ticketId: cleanTicketUpper,
         attendeeName: "Unknown / Unregistered",
         universityId: "N/A",
         seminar: "N/A",
         status: "INVALID",
-        message: `Invalid QR Code: "${cleanTicket}" is not registered.`
+        message: `Wrong code! "${cleanTicketUpper}" is not recognized as a registered participant pass.`
       };
 
       const localLogs = readLocalScanHistory();
@@ -374,7 +384,7 @@ app.post('/api/scan', async (req, res) => {
       return res.status(404).json({
         success: false,
         status: "INVALID",
-        message: `Invalid QR Code: "${cleanTicket}" is not registered in the system.`,
+        message: `Wrong code! "${cleanTicketUpper}" is not recognized as a registered seminar participant pass.`,
         scanLog: invalidLog
       });
     }
@@ -383,7 +393,7 @@ app.post('/api/scan', async (req, res) => {
     const isAlreadyChecked = Boolean(attendeeRow.checked_in);
     const scanId = `SCAN-${Date.now()}`;
 
-    // Case A: ALREADY SCANNED ONCE (Duplicate alert)
+    // Case A: ALREADY SCANNED ONCE (Duplicate alert with person's name)
     if (isAlreadyChecked) {
       const newScanCount = Number(attendeeRow.scan_count || 1) + 1;
       await pool.query(
@@ -392,16 +402,20 @@ app.post('/api/scan', async (req, res) => {
       );
 
       const timeFormatted = attendeeRow.checked_in_at 
-        ? new Date(attendeeRow.checked_in_at).toLocaleTimeString() 
+        ? new Date(attendeeRow.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
         : 'Earlier';
 
-      const dupMessage = `Already scanned once! Previously admitted at ${timeFormatted}`;
+      const dupMessage = `Already scanned! ${attendeeRow.name} was already admitted at ${timeFormatted} (Scan #${newScanCount})`;
 
-      await pool.query(
-        `INSERT INTO scan_history (scan_id, scanned_at, ticket_id, attendee_name, university_id, seminar, status, message)
-         VALUES ($1, NOW(), $2, $3, $4, $5, 'ALREADY_SCANNED', $6)`,
-        [scanId, attendeeRow.id, attendeeRow.name, attendeeRow.university_id, attendeeRow.speaker, dupMessage]
-      );
+      try {
+        await pool.query(
+          `INSERT INTO scan_history (scan_id, scanned_at, ticket_id, attendee_name, university_id, seminar, status, message)
+           VALUES ($1, NOW(), $2, $3, $4, $5, 'ALREADY_SCANNED', $6)`,
+          [scanId, attendeeRow.id, attendeeRow.name, attendeeRow.university_id, attendeeRow.speaker, dupMessage]
+        );
+      } catch (e) {
+        console.warn("Scan history insert error:", e.message);
+      }
 
       const dupLog = {
         scanId,
@@ -425,7 +439,7 @@ app.post('/api/scan', async (req, res) => {
         success: true,
         status: "ALREADY_SCANNED",
         isDuplicate: true,
-        message: `⚠️ ATTENTION: This ticket was already scanned once!`,
+        message: `⚠️ Already Scanned! ${attendeeRow.name} was already admitted at ${timeFormatted}.`,
         checkedInAt: attendeeRow.checked_in_at,
         scanCount: newScanCount,
         attendee: updatedObj,
@@ -433,7 +447,7 @@ app.post('/api/scan', async (req, res) => {
       });
     }
 
-    // Case B: FIRST TIME SCAN -> Verified & Admitted
+    // Case B: FIRST TIME SCAN -> Verified & Admitted in Green Color with Person's Name
     const updateRes = await pool.query(
       `UPDATE attendees 
        SET checked_in = true, checked_in_at = NOW(), scan_count = 1 
@@ -443,13 +457,17 @@ app.post('/api/scan', async (req, res) => {
     );
 
     const verifiedObj = mapAttendee(updateRes.rows[0]);
-    const succMessage = "Verified and admitted successfully";
+    const succMessage = `Admitted: ${verifiedObj.name} has been scanned and recorded in the attendance list.`;
 
-    await pool.query(
-      `INSERT INTO scan_history (scan_id, scanned_at, ticket_id, attendee_name, university_id, seminar, status, message)
-       VALUES ($1, NOW(), $2, $3, $4, $5, 'FIRST_CHECKIN', $6)`,
-      [scanId, verifiedObj.id, verifiedObj.name, verifiedObj.universityId, verifiedObj.speaker, succMessage]
-    );
+    try {
+      await pool.query(
+        `INSERT INTO scan_history (scan_id, scanned_at, ticket_id, attendee_name, university_id, seminar, status, message)
+         VALUES ($1, NOW(), $2, $3, $4, $5, 'FIRST_CHECKIN', $6)`,
+        [scanId, verifiedObj.id, verifiedObj.name, verifiedObj.universityId, verifiedObj.speaker, succMessage]
+      );
+    } catch (e) {
+      console.warn("Scan history insert error:", e.message);
+    }
 
     const successLog = {
       scanId,
@@ -479,7 +497,7 @@ app.post('/api/scan', async (req, res) => {
       success: true,
       status: "FIRST_CHECKIN",
       isDuplicate: false,
-      message: `✅ PASS VERIFIED: ${verifiedObj.name} admitted successfully!`,
+      message: `✅ Admitted: ${verifiedObj.name}`,
       attendee: verifiedObj,
       scanLog: successLog
     });

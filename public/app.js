@@ -247,7 +247,7 @@ function printTicketPass() {
   window.print();
 }
 
-// Download High-Resolution PDF Ticket (Exact Visual Clone of Screen Ticket)
+// Download High-Resolution PDF Ticket (Exact Visual Clone of Screen Ticket, Never Cut Off)
 async function downloadTicketPDF() {
   if (!currentAttendee) return;
 
@@ -267,10 +267,13 @@ async function downloadTicketPDF() {
     `;
   }
 
+  // Off-screen rendering wrapper to guarantee perfect unclipped desktop proportions
+  let offscreenWrapper = null;
+
   try {
-    // 1. Ensure all images (logos & QR) are completely loaded
-    const imgs = ticketElement.querySelectorAll('img');
-    await Promise.all(Array.from(imgs).map(img => {
+    // 1. Ensure all original images (logos & QR) are completely loaded
+    const origImgs = ticketElement.querySelectorAll('img');
+    await Promise.all(Array.from(origImgs).map(img => {
       if (img.complete) return Promise.resolve();
       return new Promise(res => { img.onload = img.onerror = res; });
     }));
@@ -278,14 +281,55 @@ async function downloadTicketPDF() {
     // Brief delay to ensure QR canvas is painted
     await new Promise(r => setTimeout(r, 120));
 
-    // 2. High-resolution raster capture of the EXACT card shown on screen
     if (window.html2canvas) {
-      const canvas = await window.html2canvas(ticketElement, {
+      // Create off-screen sandbox of fixed width 780px so PDF is always identical regardless of device/screen width
+      offscreenWrapper = document.createElement('div');
+      offscreenWrapper.style.position = 'fixed';
+      offscreenWrapper.style.left = '-9999px';
+      offscreenWrapper.style.top = '0';
+      offscreenWrapper.style.width = '780px';
+      offscreenWrapper.style.zIndex = '-9999';
+      offscreenWrapper.style.opacity = '0';
+      offscreenWrapper.style.pointerEvents = 'none';
+
+      const clone = ticketElement.cloneNode(true);
+      clone.style.width = '780px';
+      clone.style.maxWidth = '780px';
+      clone.style.minWidth = '780px';
+      clone.style.margin = '0';
+      clone.style.display = 'block';
+
+      // Copy any canvas data from original to clone (especially the QR code)
+      const origCanvases = ticketElement.querySelectorAll('canvas');
+      const cloneCanvases = clone.querySelectorAll('canvas');
+      for (let i = 0; i < origCanvases.length; i++) {
+        if (cloneCanvases[i]) {
+          cloneCanvases[i].width = origCanvases[i].width;
+          cloneCanvases[i].height = origCanvases[i].height;
+          const ctx = cloneCanvases[i].getContext('2d');
+          ctx.drawImage(origCanvases[i], 0, 0);
+        }
+      }
+
+      offscreenWrapper.appendChild(clone);
+      document.body.appendChild(offscreenWrapper);
+
+      // Wait for clone images to be ready
+      const cloneImgs = clone.querySelectorAll('img');
+      await Promise.all(Array.from(cloneImgs).map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise(res => { img.onload = img.onerror = res; });
+      }));
+
+      // 2. High-resolution raster capture of the EXACT card shown on screen
+      const canvas = await window.html2canvas(clone, {
         scale: 3, // 3x High-DPI for crisp typography & 100% scannable QR
         useCORS: true,
         allowTaint: true,
         backgroundColor: null,
-        logging: false
+        logging: false,
+        width: 780,
+        windowWidth: 1200
       });
 
       const imgData = canvas.toDataURL('image/png', 1.0);
@@ -295,13 +339,13 @@ async function downloadTicketPDF() {
         throw new Error("jsPDF not loaded");
       }
 
-      // Proportional dimensions for clean ticket format
+      // Proportional dimensions for clean ticket format with margins
       const canvasWidth = canvas.width;
       const canvasHeight = canvas.height;
       const ticketMmWidth = 210;
       const ticketMmHeight = (canvasHeight * ticketMmWidth) / canvasWidth;
 
-      const pageMargin = 10;
+      const pageMargin = 12;
       const pageWidth = ticketMmWidth + (pageMargin * 2);
       const pageHeight = ticketMmHeight + (pageMargin * 2);
 
@@ -315,7 +359,7 @@ async function downloadTicketPDF() {
       doc.setFillColor(248, 250, 252);
       doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
-      // Place exact visual clone of ticket with clean margin
+      // Place exact visual clone of ticket centered with clean margins
       doc.addImage(imgData, 'PNG', pageMargin, pageMargin, ticketMmWidth, ticketMmHeight, undefined, 'FAST');
 
       doc.save(`PAFSS_Seminar_Pass_${passCode}.pdf`);
@@ -334,6 +378,9 @@ async function downloadTicketPDF() {
       window.print();
     }
   } finally {
+    if (offscreenWrapper && offscreenWrapper.parentNode) {
+      offscreenWrapper.parentNode.removeChild(offscreenWrapper);
+    }
     if (downloadBtn) {
       downloadBtn.disabled = false;
       downloadBtn.innerHTML = originalBtnHtml;
