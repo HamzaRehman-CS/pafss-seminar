@@ -12,8 +12,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
 
-  <!-- HTML5 QR Code Scanner Library -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- HTML5 QR Code Scanner Library (Local & Fast) -->
+  <script src="html5-qrcode.min.js"></script>
 
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -78,9 +78,6 @@
           </button>
         </form>
 
-        <div class="admin-hint-strip">
-          🔑 ID: <code>pafss26</code> | Pass: <code>seminar</code>
-        </div>
       </div>
     </div>
 
@@ -130,8 +127,12 @@
 
             <div style="display: flex; gap: 8px; margin: 12px 0;">
               <button class="glass-btn glass-btn-sky" id="btn-camera-toggle" onclick="toggleCameraScanner()" style="flex: 1;">
-                Start Camera Scan
+                📷 Start Camera Scan
               </button>
+              <label class="glass-btn glass-btn-subtle" style="cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 0.84rem; padding: 8px 14px;">
+                <span>📁 Upload Image</span>
+                <input type="file" id="qr-file-input" accept="image/*" style="display: none;" onchange="handleFileQrScan(event)">
+              </label>
             </div>
 
             <!-- Manual Ticket ID Input Fallback -->

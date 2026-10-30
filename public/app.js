@@ -199,19 +199,21 @@ function renderTicketData(attendee) {
   generateQrCode(attendee.id);
 }
 
-// Generate QR Code with Fallback
+// Generate High-Density Sharp QR Code (Pure Black #000000 on Pure White #FFFFFF)
 function generateQrCode(text) {
   const container = document.getElementById('ticket-qr-holder');
   if (!container) return;
   container.innerHTML = '';
 
+  const cleanText = String(text || '').trim().toUpperCase();
+
   if (window.QRCode) {
     try {
       new QRCode(container, {
-        text: text,
-        width: 120,
-        height: 120,
-        colorDark: "#0F172A",
+        text: cleanText,
+        width: 220,
+        height: 220,
+        colorDark: "#000000",
         colorLight: "#FFFFFF",
         correctLevel: QRCode.CorrectLevel.H
       });
@@ -221,20 +223,22 @@ function generateQrCode(text) {
     }
   }
 
-  // Canvas Fallback
+  // High-contrast clean canvas fallback
   const canvas = document.createElement('canvas');
-  canvas.width = 120;
-  canvas.height = 120;
+  canvas.width = 200;
+  canvas.height = 200;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, 120, 120);
-  ctx.fillStyle = '#0F172A';
-  ctx.font = 'bold 11px monospace';
+  ctx.fillRect(0, 0, 200, 200);
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 15px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('PASS QR', 60, 45);
-  ctx.font = '10px monospace';
-  ctx.fillText(text, 60, 75);
-  ctx.strokeRect(6, 6, 108, 108);
+  ctx.fillText('ENTRY PASS', 100, 80);
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText(cleanText, 100, 115);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#000000';
+  ctx.strokeRect(10, 10, 180, 180);
   container.appendChild(canvas);
 }
 
@@ -243,13 +247,106 @@ function printTicketPass() {
   window.print();
 }
 
-// Download High-Resolution PDF Ticket
+// Download High-Resolution PDF Ticket (Exact Visual Clone of Screen Ticket)
 async function downloadTicketPDF() {
   if (!currentAttendee) return;
 
   const attendee = currentAttendee;
-  const isSeminar2 = (attendee.seminar === 'seminar2');
+  const passCode = attendee.id;
+  const ticketElement = document.getElementById('active-vibrant-ticket');
+  if (!ticketElement) return;
 
+  // Visual button feedback
+  const downloadBtn = document.querySelector('.ticket-actions-row button:first-child');
+  const originalBtnHtml = downloadBtn ? downloadBtn.innerHTML : '';
+  if (downloadBtn) {
+    downloadBtn.disabled = true;
+    downloadBtn.innerHTML = `
+      <span class="glass-icon-wrapper">⏳</span>
+      <span>Generating PDF Ticket...</span>
+    `;
+  }
+
+  try {
+    // 1. Ensure all images (logos & QR) are completely loaded
+    const imgs = ticketElement.querySelectorAll('img');
+    await Promise.all(Array.from(imgs).map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise(res => { img.onload = img.onerror = res; });
+    }));
+
+    // Brief delay to ensure QR canvas is painted
+    await new Promise(r => setTimeout(r, 120));
+
+    // 2. High-resolution raster capture of the EXACT card shown on screen
+    if (window.html2canvas) {
+      const canvas = await window.html2canvas(ticketElement, {
+        scale: 3, // 3x High-DPI for crisp typography & 100% scannable QR
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: null,
+        logging: false
+      });
+
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const { jsPDF } = window.jspdf || window;
+
+      if (!jsPDF) {
+        throw new Error("jsPDF not loaded");
+      }
+
+      // Proportional dimensions for clean ticket format
+      const canvasWidth = canvas.width;
+      const canvasHeight = canvas.height;
+      const ticketMmWidth = 210;
+      const ticketMmHeight = (canvasHeight * ticketMmWidth) / canvasWidth;
+
+      const pageMargin = 10;
+      const pageWidth = ticketMmWidth + (pageMargin * 2);
+      const pageHeight = ticketMmHeight + (pageMargin * 2);
+
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: [pageWidth, pageHeight]
+      });
+
+      // Ambient background matching the clean portal
+      doc.setFillColor(248, 250, 252);
+      doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+      // Place exact visual clone of ticket with clean margin
+      doc.addImage(imgData, 'PNG', pageMargin, pageMargin, ticketMmWidth, ticketMmHeight, undefined, 'FAST');
+
+      doc.save(`PAFSS_Seminar_Pass_${passCode}.pdf`);
+      return;
+    }
+
+    // Direct jsPDF Fallback
+    await generateDirectPdfFallback(attendee);
+
+  } catch (err) {
+    console.warn("html2canvas PDF generation failed, using direct jsPDF fallback:", err);
+    try {
+      await generateDirectPdfFallback(attendee);
+    } catch (fallbackErr) {
+      console.error("Direct PDF fallback error:", fallbackErr);
+      window.print();
+    }
+  } finally {
+    if (downloadBtn) {
+      downloadBtn.disabled = false;
+      downloadBtn.innerHTML = originalBtnHtml;
+    }
+  }
+}
+
+// Direct jsPDF Fallback with Solid White Quiet Zone for QR Code
+async function generateDirectPdfFallback(attendee) {
+  const { jsPDF } = window.jspdf || window;
+  if (!jsPDF) throw new Error("jsPDF not available");
+
+  const isSeminar2 = (attendee.seminar === 'seminar2');
   const passTitle = isSeminar2
     ? "Artificial Intelligence in Healthcare: Smart Medicine, Research & Business"
     : "The Silent Pandemic: Antimicrobial Resistance & Global Health";
@@ -259,111 +356,100 @@ async function downloadTicketPDF() {
   const passCode = attendee.id;
   const univId = attendee.universityId || attendee.university_id || 'N/A';
 
-  try {
-    const { jsPDF } = window.jspdf || {};
-    if (!jsPDF) {
-      alert("PDF generator is initializing. You can use 'Print Pass'.");
-      return;
-    }
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: [220, 105]
+  });
 
-    const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: [210, 95]
-    });
-
-    // Dark sleek VIP background
-    doc.setFillColor(15, 23, 42);
-    doc.rect(0, 0, 210, 95, 'F');
-
-    // Outer border
-    if (isSeminar2) {
-      doc.setDrawColor(249, 115, 22);
-    } else {
-      doc.setDrawColor(14, 165, 233);
-    }
-    doc.setLineWidth(1.2);
-    doc.roundedRect(6, 6, 198, 83, 3, 3, 'S');
-
-    // Header Strip
-    doc.setFillColor(255, 255, 255);
-    doc.rect(6, 6, 198, 14, 'F');
-
-    doc.setTextColor(15, 23, 42);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10.5);
-    doc.text("PAF-IAST SCIENCE SOCIETY  •  OFFICIAL ENTRY PASS", 12, 16);
-
-    doc.setFontSize(8.5);
-    doc.setTextColor(isSeminar2 ? 234 : 2, isSeminar2 ? 88 : 132, isSeminar2 ? 12 : 199);
-    doc.text(isSeminar2 ? "DAY 2: AI IN HEALTHCARE" : "DAY 1: ANTIMICROBIAL RESISTANCE", 198, 16, { align: 'right' });
-
-    // Main Left Column: Event details
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(11.5);
-    doc.setFont("helvetica", "bold");
-    const splitTitle = doc.splitTextToSize(passTitle, 130);
-    doc.text(splitTitle, 12, 30);
-
-    doc.setFontSize(9.5);
-    doc.setTextColor(249, 115, 22);
-    doc.text(`Speaker: ${speakerName}`, 12, 38);
-
-    // Attendee Info Box
-    doc.setFillColor(26, 36, 56);
-    doc.setDrawColor(51, 65, 85);
-    doc.roundedRect(12, 42, 132, 40, 2, 2, 'FD');
-
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.setFont("helvetica", "bold");
-    doc.text("ATTENDEE NAME", 16, 48);
-    doc.text("UNIVERSITY ID", 78, 48);
-    doc.text("DATE & TIMING", 16, 60);
-    doc.text("OFFICIAL VENUE", 78, 60);
-    doc.text("PHONE NUMBER", 16, 72);
-    doc.text("PERSONAL GMAIL", 78, 72);
-
-    doc.setFontSize(8.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text(attendee.name.substring(0, 30), 16, 53);
-    doc.text(univId, 78, 53);
-    doc.text(`${dateText.split(' ')[0]} ${dateText.split(' ')[1]} • 2:00-4:00 PM`, 16, 65);
-    doc.text("B2 MPH (Multipurpose Hall)", 78, 65);
-    doc.text(attendee.phone, 16, 77);
-    doc.text(attendee.email.substring(0, 28), 78, 77);
-
-    // Perforation line
-    doc.setDrawColor(100, 116, 139);
-    doc.setLineDashPattern([2, 2], 0);
-    doc.line(152, 24, 152, 89);
-    doc.setLineDashPattern([], 0);
-
-    // Right Stub: QR Code & ID
-    const qrCanvas = document.querySelector('#ticket-qr-holder canvas') || document.querySelector('#ticket-qr-holder img');
-    if (qrCanvas) {
-      let imgData = qrCanvas.toDataURL ? qrCanvas.toDataURL("image/png") : qrCanvas.src;
-      doc.addImage(imgData, 'PNG', 160, 26, 38, 38);
-    } else {
-      doc.rect(160, 26, 38, 38, 'S');
-      doc.text("QR PASS", 179, 45, { align: "center" });
-    }
-
-    doc.setFont("courier", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(255, 255, 255);
-    doc.text(passCode, 179, 70, { align: 'center' });
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.text("Scan at B2 MPH Entrance", 179, 76, { align: 'center' });
-    doc.text("PAF-IAST Science Society", 179, 82, { align: 'center' });
-
-    doc.save(`PAFSS_Seminar_Ticket_${passCode}.pdf`);
-
-  } catch (e) {
-    console.error("PDF generation failed:", e);
-    alert("Could not generate PDF directly. You can use 'Print Pass'.");
+  // Background matching the on-screen ticket theme
+  if (isSeminar2) {
+    doc.setFillColor(17, 20, 32);
+    doc.rect(0, 0, 220, 105, 'F');
+    doc.setDrawColor(249, 115, 22);
+  } else {
+    doc.setFillColor(9, 19, 34);
+    doc.rect(0, 0, 220, 105, 'F');
+    doc.setDrawColor(14, 165, 233);
   }
+
+  doc.setLineWidth(1.2);
+  doc.roundedRect(6, 6, 208, 93, 3, 3, 'S');
+
+  // Header Strip
+  doc.setFillColor(255, 255, 255);
+  doc.rect(6, 6, 208, 14, 'F');
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.5);
+  doc.text("PAF-IAST SCIENCE SOCIETY  •  OFFICIAL ENTRY PASS", 12, 16);
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(isSeminar2 ? 234 : 2, isSeminar2 ? 88 : 132, isSeminar2 ? 12 : 199);
+  doc.text(isSeminar2 ? "DAY 2: AI IN HEALTHCARE" : "DAY 1: ANTIMICROBIAL RESISTANCE", 208, 16, { align: 'right' });
+
+  // Main Left Column: Event details
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  const splitTitle = doc.splitTextToSize(passTitle, 134);
+  doc.text(splitTitle, 12, 29);
+
+  doc.setFontSize(9);
+  doc.setTextColor(249, 115, 22);
+  doc.text(`Speaker: ${speakerName}`, 12, 38);
+
+  // Attendee Info Box
+  doc.setFillColor(26, 36, 56);
+  doc.setDrawColor(51, 65, 85);
+  doc.roundedRect(12, 42, 134, 48, 2, 2, 'FD');
+
+  doc.setFontSize(7);
+  doc.setTextColor(148, 163, 184);
+  doc.setFont("helvetica", "bold");
+  doc.text("ATTENDEE NAME", 16, 49);
+  doc.text("UNIVERSITY ID", 78, 49);
+  doc.text("DATE & TIMING", 16, 62);
+  doc.text("OFFICIAL VENUE", 78, 62);
+  doc.text("PHONE NUMBER", 16, 75);
+  doc.text("PERSONAL GMAIL", 78, 75);
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(255, 255, 255);
+  doc.text(attendee.name.substring(0, 30), 16, 55);
+  doc.text(univId, 78, 55);
+  doc.text(`${dateText.split(' ')[0]} ${dateText.split(' ')[1]} • 2:00-4:00 PM`, 16, 68);
+  doc.text("B2 MPH (Multipurpose Hall)", 78, 68);
+  doc.text(attendee.phone, 16, 81);
+  doc.text(attendee.email.substring(0, 28), 78, 81);
+
+  // Perforation line
+  doc.setDrawColor(100, 116, 139);
+  doc.setLineDashPattern([2, 2], 0);
+  doc.line(154, 24, 154, 95);
+  doc.setLineDashPattern([], 0);
+
+  // Right Stub: Pure White Frame for QR Code (CRITICAL for instant scanability)
+  const qrCanvas = document.querySelector('#ticket-qr-holder canvas') || document.querySelector('#ticket-qr-holder img');
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(162, 24, 46, 46, 3, 3, 'F');
+
+  if (qrCanvas) {
+    let imgData = qrCanvas.toDataURL ? qrCanvas.toDataURL("image/png") : qrCanvas.src;
+    doc.addImage(imgData, 'PNG', 165, 27, 40, 40);
+  }
+
+  doc.setFont("courier", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text(passCode, 185, 76, { align: 'center' });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(148, 163, 184);
+  doc.text("Scan at B2 MPH Entrance", 185, 82, { align: 'center' });
+  doc.text("PAF-IAST Science Society", 185, 88, { align: 'center' });
+
+  doc.save(`PAFSS_Seminar_Ticket_${passCode}.pdf`);
 }

@@ -345,6 +345,24 @@ function processManualEntry() {
   input.value = '';
 }
 
+async function handleFileQrScan(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  try {
+    if (!html5Scanner) {
+      html5Scanner = new Html5Qrcode("admin-qr-reader");
+    }
+    const decodedText = await html5Scanner.scanFile(file, true);
+    processTicketScan(decodedText);
+  } catch (err) {
+    console.warn("File scan error:", err);
+    alert("Could not detect a clear QR code in this image. Please ensure the QR code is centered and legible.");
+  } finally {
+    e.target.value = '';
+  }
+}
+
 let lastScannedText = '';
 let lastScannedTimestamp = 0;
 
