@@ -25,6 +25,11 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// Dedicated Tickets Route: /tickets serves tickets.html directly
+app.get('/tickets', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'tickets.html'));
+});
+
 // Neon Cloud PostgreSQL Connection
 const NEON_CONNECTION_STRING = process.env.DATABASE_URL || 
   'postgresql://neondb_owner:npg_Nm7ERXpOnG9t@ep-small-recipe-b4becr5v-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require';
@@ -281,6 +286,81 @@ app.get('/api/attendees', async (req, res) => {
   }
 });
 
+// 2b. Public Ticket Status & Verification Lookup by Registration ID
+app.get('/api/tickets/:id', async (req, res) => {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ success: false, message: "Registration ID is required." });
+  }
+
+  const cleanId = String(id).trim().toUpperCase();
+
+  try {
+    const result = await pool.query(
+      `SELECT * FROM attendees 
+       WHERE UPPER(id) = $1 
+          OR UPPER(ticket_hash) = $1 
+       LIMIT 1`,
+      [cleanId]
+    );
+
+    let row = result.rows[0];
+
+    // Fallback to local cache if DB query returns nothing
+    if (!row) {
+      const localList = readLocalAttendees();
+      const localMatch = localList.find(a => 
+        (a.id && a.id.toUpperCase() === cleanId) || 
+        (a.ticketHash && a.ticketHash.toUpperCase() === cleanId)
+      );
+      if (localMatch) {
+        row = localMatch;
+      }
+    }
+
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        message: `No registration found with ID "${cleanId}". Please verify your Registration ID.`
+      });
+    }
+
+    const attendee = mapAttendee(row);
+    const isVerified = (attendee.paymentStatus === 'verified' || attendee.payment_status === 'verified');
+
+    if (!isVerified) {
+      // UNDER REVIEW / NOT VERIFIED YET
+      return res.json({
+        success: true,
+        verified: false,
+        status: attendee.paymentStatus || 'pending',
+        attendee: {
+          id: attendee.id,
+          name: attendee.name,
+          universityId: attendee.universityId || attendee.university_id,
+          registeredAt: attendee.registeredAt,
+          phone: attendee.phone,
+          email: attendee.email
+        },
+        message: "Your registration request is currently under review by the society administration."
+      });
+    }
+
+    // VERIFIED & APPROVED -> Full Ticket Pass available for download
+    return res.json({
+      success: true,
+      verified: true,
+      status: 'verified',
+      attendee: attendee,
+      message: "Registration verified and approved! Official ticket pass is ready."
+    });
+
+  } catch (err) {
+    console.error("Ticket lookup error:", err);
+    return res.status(500).json({ success: false, message: "Error looking up registration status." });
+  }
+});
+
 // 3. Register New Attendee (Unified 2-Day Seminar Pass with 300 PKR Fee & Receipt Upload)
 app.post('/api/register', async (req, res) => {
   const { name, universityId, phone, email, paymentReceipt } = req.body;
@@ -295,9 +375,19 @@ app.post('/api/register', async (req, res) => {
   const cleanEmail = email.trim().toLowerCase();
 
   try {
-    // Count existing attendees to generate sequential ID
-    const countRes = await pool.query("SELECT COUNT(*) FROM attendees");
-    const nextSeq = parseInt(countRes.rows[0].count, 10) + 1;
+    // Extract highest existing numeric sequence to avoid duplicate key collisions
+    let nextSeq = 1;
+    const idRes = await pool.query("SELECT id FROM attendees");
+    const existingNums = idRes.rows
+      .map(r => {
+        const m = String(r.id).match(/PAFSS-26-(\d+)/i);
+        return m ? parseInt(m[1], 10) : 0;
+      })
+      .filter(n => !isNaN(n));
+
+    if (existingNums.length > 0) {
+      nextSeq = Math.max(...existingNums) + 1;
+    }
 
     const id = `PAFSS-26-${String(nextSeq).padStart(3, '0')}`;
     const seatNumber = `B2-${String(nextSeq).padStart(3, '0')}`;

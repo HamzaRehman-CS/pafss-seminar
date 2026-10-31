@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seminar Pass &amp; Verification Status | PAF-IAST Science Society</title>
+  <meta name="description" content="Check your 2-Day Seminar Series registration approval status and download your official entry pass with unique QR code.">
+  <link rel="icon" type="image/png" href="assets/society_logo.png">
+
+  <!-- Apple & Google Modern Clean Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+
+  <!-- Offline Libraries for QR, PDF & Celebration -->
+  <script src="qrcode.min.js"></script>
+  <script src="jspdf.umd.min.js"></script>
+  <script src="confetti.browser.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Tickets Portal Specific Refinements */
+    .tickets-portal-wrap {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 24px 16px 60px;
+    }
+
+    .tickets-search-card {
+      background: #FFFFFF;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-lg);
+      padding: 28px 24px;
+      box-shadow: 0 10px 25px -5px rgba(10, 25, 47, 0.05);
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    .tickets-search-input-group {
+      display: flex;
+      gap: 10px;
+      max-width: 580px;
+      margin: 18px auto 8px;
+    }
+
+    .ticket-search-input {
+      flex: 1;
+      font-size: 1.05rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 12px 18px;
+    }
+
+    .ticket-status-result-card {
+      background: #FFFFFF;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-lg);
+      padding: 28px 24px;
+      box-shadow: 0 10px 30px rgba(10, 25, 47, 0.06);
+      margin-top: 20px;
+      display: none;
+    }
+
+    /* Pending / Under Review Banner */
+    .status-review-box {
+      background: #FFFBEB;
+      border: 1.5px solid #F59E0B;
+      border-radius: var(--radius-md);
+      padding: 22px 20px;
+      text-align: left;
+    }
+
+    .status-review-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .status-review-icon {
+      font-size: 1.8rem;
+      line-height: 1;
+    }
+
+    .status-review-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #92400E;
+    }
+
+    .status-review-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      background: #FEF3C7;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      margin: 12px 0;
+      font-size: 0.86rem;
+      color: #78350F;
+    }
+
+    .status-review-desc {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: #78350F;
+      margin-top: 8px;
+    }
+
+    /* Verified Ticket Card View */
+    .ticket-approved-header {
+      background: #ECFDF5;
+      border: 1.5px solid #10B981;
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+
+    .ticket-approved-title {
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: #065F46;
+    }
+
+    .ticket-approved-sub {
+      font-size: 0.84rem;
+      color: #047857;
+      margin-top: 3px;
+    }
+
+    /* On-Screen Pass Clone */
+    .portal-ticket-pass {
+      background: #0A192F;
+      color: #FFFFFF;
+      border-radius: var(--radius-lg);
+      padding: 26px 28px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: 0 16px 36px rgba(10, 25, 47, 0.22);
+      text-align: left;
+      overflow: hidden;
+    }
+
+    .portal-ticket-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+      padding-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .portal-ticket-logos {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .portal-ticket-logo-univ {
+      height: 44px;
+      width: auto;
+      object-fit: contain;
+    }
+
+    .portal-ticket-logo-soc {
+      height: 44px;
+      width: auto;
+      object-fit: contain;
+    }
+
+    .portal-ticket-badge {
+      background: var(--blue-accent);
+      color: #FFFFFF;
+      padding: 4px 14px;
+      border-radius: var(--radius-pill);
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .portal-ticket-body {
+      display: grid;
+      grid-template-columns: 1fr 200px;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .portal-ticket-info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin-top: 14px;
+    }
+
+    .portal-info-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .portal-info-lbl {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94A3B8;
+      font-weight: 700;
+    }
+
+    .portal-info-val {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .portal-ticket-qr-stub {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.05);
+      border-left: 2px dashed rgba(255, 255, 255, 0.2);
+      padding: 12px 12px 12px 24px;
+    }
+
+    .portal-ticket-qr-frame {
+      width: 140px;
+      height: 140px;
+      background: #FFFFFF;
+      padding: 8px;
+      border-radius: var(--radius-md);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .portal-ticket-qr-frame canvas,
+    .portal-ticket-qr-frame img {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+
+    .portal-ticket-code-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: #FFFFFF;
+      margin-top: 8px;
+      letter-spacing: 0.05em;
+    }
+
+    @media (max-width: 680px) {
+      .portal-ticket-body {
+        grid-template-columns: 1fr;
+      }
+      .portal-ticket-qr-stub {
+        border-left: none;
+        border-top: 2px dashed rgba(255, 255, 255, 0.2);
+        padding: 20px 0 0;
+      }
+      .portal-ticket-info-grid {
+        grid-template-columns: 1fr;
+      }
+      .tickets-search-input-group {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Static Ambient Background -->
+  <div class="ambient-bg-container" aria-hidden="true"></div>
+
+  <!-- Floating Side Emojis (Subtle) -->
+  <aside class="side-emoji-dock dock-left" aria-hidden="true">
+    <div class="glass-emoji-circle" title="Scientific Research">🧪</div>
+    <div class="glass-emoji-circle" title="Genomic Healthcare">🧬</div>
+  </aside>
+
+  <aside class="side-emoji-dock dock-right" aria-hidden="true">
+    <div class="glass-emoji-circle" title="Smart Medicine">⚡</div>
+    <div class="glass-emoji-circle" title="Artificial Intelligence">🤖</div>
+  </aside>
+
+  <!-- SCREEN WRAPPER -->
+  <div class="app-screen-container">
+
+    <!-- TOP NAVIGATION BAR -->
+    <header class="glass-navbar">
+      <div class="nav-inner">
+        <div class="nav-logos-cluster">
+          <img src="assets/university_logo.png" alt="PAF-IAST University" class="nav-logo-pic">
+          <div class="nav-divider-line"></div>
+          <img src="assets/society_logo.png" alt="PAF-IAST Science Society" class="nav-logo-pic">
+          <div class="nav-headings">
+            <span class="nav-main-title">PAF-IAST Science Society</span>
+            <span class="nav-sub-title">Official Tickets &amp; Verification Portal</span>
+          </div>
+        </div>
+
+        <div>
+          <a href="index.html" class="glass-btn-subtle" style="text-decoration: none; padding: 7px 15px; font-size: 0.82rem; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
+            <span>🏠 Home &amp; Register</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN TICKETS WRAPPER -->
+    <main class="tickets-portal-wrap">
+      
+      <!-- HERO HEADER -->
+      <section class="hero-compact" style="margin-bottom: 24px;">
+        <div class="pill-info-meta">
+          <span class="pulse-indicator"></span>
+          <span>Official 2-Day Seminar Series Pass Portal • B2 MPH</span>
+        </div>
+        <h1 class="hero-super-title">
+          Find &amp; Download Your Ticket Pass
+        </h1>
+        <p class="hero-subtitle-brief">
+          Enter your Registration ID below to check your society approval status and download your official entry ticket.
+        </p>
+      </section>
+
+      <!-- SEARCH CARD (SINGLE BAR) -->
+      <div class="tickets-search-card">
+        <label for="ticket-search-input" style="font-size: 0.88rem; font-weight: 700; color: var(--navy-dark); text-transform: uppercase; letter-spacing: 0.05em; display: block;">
+          Enter Your Registration ID
+        </label>
+
+        <div class="tickets-search-input-group">
+          <input 
+            type="text" 
+            id="ticket-search-input" 
+            placeholder="e.g. PAFSS-26-004" 
+            class="clean-glass-input ticket-search-input"
+            onkeydown="if(event.key === 'Enter') handleTicketLookup()"
+            autocomplete="off" 
+            spellcheck="false"
+          >
+          <button class="navy-primary-btn" id="btn-search-ticket" onclick="handleTicketLookup()" style="padding: 12px 22px; font-weight: 700; font-size: 0.95rem;">
+            <span>Check Status</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+
+        <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 8px;">
+          Your ID was generated upon registration (e.g. <code>PAFSS-26-001</code>).
+        </div>
+      </div>
+
+      <!-- STATUS & TICKET RESULT CONTAINER -->
+      <div id="ticket-result-container" class="ticket-status-result-card">
+
+        <!-- 1. LOADING STATE -->
+        <div id="result-loading" style="display: none; text-align: center; padding: 36px 20px;">
+          <div style="font-size: 1.8rem; margin-bottom: 8px;">🔍</div>
+          <strong style="color: var(--navy-dark); font-size: 1rem;">Searching society database...</strong>
+          <p style="color: var(--text-muted); font-size: 0.82rem; margin-top: 4px;">Verifying candidate registration record</p>
+        </div>
+
+        <!-- 2. NOT FOUND STATE -->
+        <div id="result-not-found" style="display: none; text-align: center; padding: 24px 16px;">
+          <div style="font-size: 2rem; margin-bottom: 8px;">❌</div>
+          <h3 style="color: var(--status-red); font-size: 1.15rem; margin-bottom: 6px;">Registration ID Not Found</h3>
+          <p style="color: var(--text-body); font-size: 0.88rem; max-width: 480px; margin: 0 auto;" id="not-found-message">
+            No registration record matches this ID. Please double check that you typed the full ID (including PAFSS-26-).
+          </p>
+          <div style="margin-top: 16px;">
+            <a href="index.html" class="navy-primary-btn" style="text-decoration: none; padding: 8px 18px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 5px;">
+              <span>Register for the Seminar Now</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- 3. UNDER REVIEW / NOT VERIFIED YET STATE -->
+        <div id="result-under-review" style="display: none;">
+          <div class="status-review-box">
+            <div class="status-review-header">
+              <span class="status-review-icon">⏳</span>
+              <div>
+                <div class="status-review-title">Registration Request Under Review</div>
+                <span style="font-size: 0.8rem; color: #B45309; font-weight: 700;">Status: Not Verified Yet</span>
+              </div>
+            </div>
+
+            <div class="status-review-meta">
+              <div><strong>Candidate Name:</strong> <span id="review-name">Attendee</span></div>
+              <div><strong>University ID:</strong> <span id="review-univ-id">N/A</span></div>
+              <div><strong>Registration ID:</strong> <code id="review-ticket-id">PAFSS-26-XXX</code></div>
+            </div>
+
+            <p class="status-review-desc">
+              Your 300 PKR registration proof has been received and is currently under review by the <strong>PAF-IAST Science Society</strong>. Once your payment is approved in the admin portal, your official entry pass with scannable QR code will become available right here for instant download.
+            </p>
+
+            <div style="margin-top: 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <button class="navy-primary-btn" onclick="handleTicketLookup()" style="padding: 8px 18px; font-size: 0.84rem;">
+                🔄 Refresh Verification Status
+              </button>
+              <span style="font-size: 0.78rem; color: #92400E;">Please allow a short period for our organizing team to verify your transaction.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. VERIFIED & APPROVED STATE -->
+        <div id="result-approved" style="display: none;">
+          
+          <div class="ticket-approved-header">
+            <div>
+              <div class="ticket-approved-title">✅ Registration Approved &amp; Verified!</div>
+              <div class="ticket-approved-sub">Your official seminar pass has been cleared for admission at the B2 MPH hall entrance.</div>
+            </div>
+            <button class="navy-primary-btn" onclick="downloadCurrentTicketPDF()" style="padding: 10px 20px; font-weight: 800; font-size: 0.88rem; flex-shrink: 0;">
+              📥 Download Ticket (PDF)
+            </button>
+          </div>
+
+          <!-- VISUAL TICKET PASS CLONE (ZERO PAYMENT INFO) -->
+          <div class="portal-ticket-pass" id="portal-visual-ticket">
+            
+            <div class="portal-ticket-head">
+              <div class="portal-ticket-logos">
+                <img src="assets/university_logo.png" alt="University Logo" class="portal-ticket-logo-univ">
+                <img src="assets/society_logo.png" alt="Society Logo" class="portal-ticket-logo-soc">
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 700; color: #94A3B8; text-transform: uppercase;">Pak-Austria Fachhochschule: IAST</div>
+                  <div style="font-size: 0.96rem; font-weight: 800; color: #FFFFFF;">PAF-IAST SCIENCE SOCIETY • OFFICIAL ENTRY PASS</div>
+                </div>
+              </div>
+              <span class="portal-ticket-badge">2-Day Seminar Pass</span>
+            </div>
+
+            <div class="portal-ticket-body">
+              <div>
+                <h2 style="font-size: 1.15rem; font-weight: 800; color: #FFFFFF; margin-bottom: 6px;">
+                  The Frontiers of Medicine &amp; Smart Healthcare AI
+                </h2>
+                <div style="font-size: 0.86rem; color: #FB923C; font-weight: 700; margin-bottom: 12px;">
+                  Speakers: Dr. Hamad Ali &amp; Dr. Shah Faisal
+                </div>
+
+                <div class="portal-ticket-info-grid">
+                  <div class="portal-info-cell">
+                    <span class="portal-info-lbl">Attendee Name</span>
+                    <span class="portal-info-val" id="t-disp-name">Hamza Rehman</span>
+                  </div>
+                  <div class="portal-info-cell">
+                    <span class="portal-info-lbl">University ID</span>
+                    <span class="portal-info-val" id="t-disp-univ">454545</span>
+                  </div>
+                  <div class="portal-info-cell">
+                    <span class="portal-info-lbl">Dates &amp; Timing</span>
+                    <span class="portal-info-val">Wed 4th &amp; Thu 5th Nov • 2:00 – 4:00 PM</span>
+                  </div>
+                  <div class="portal-info-cell">
+                    <span class="portal-info-lbl">Official Venue</span>
+                    <span class="portal-info-val">B2 MPH (Multipurpose Hall)</span>
+                  </div>
+                  <div class="portal-info-cell">
+                    <span class="portal-info-lbl">Phone Number</span>
+                    <span class="portal-info-val" id="t-disp-phone">+923155647402</span>
+                  </div>
+                  <div class="portal-info-cell">
+                    <span class="portal-info-lbl">Personal Gmail</span>
+                    <span class="portal-info-val" id="t-disp-email">user@gmail.com</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Ticket Stub: Crisp Scannable QR in Pure White Quiet Box -->
+              <div class="portal-ticket-qr-stub">
+                <div class="portal-ticket-qr-frame" id="ticket-qr-container">
+                  <!-- QR renders here -->
+                </div>
+                <div class="portal-ticket-code-tag" id="t-disp-code">PAFSS-26-004</div>
+                <span style="font-size: 0.68rem; color: #94A3B8; margin-top: 4px;">Scan at B2 MPH Entrance</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Bottom Action Buttons -->
+          <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap;">
+            <button class="navy-primary-btn" onclick="downloadCurrentTicketPDF()" style="padding: 12px 24px; font-weight: 800; font-size: 0.92rem;">
+              📥 Download Ticket (PDF)
+            </button>
+            <button class="glass-btn-subtle" onclick="window.print()" style="padding: 12px 20px; font-weight: 700; font-size: 0.9rem;">
+              🖨️ Print Pass
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="footer-compact">
+      <div class="footer-compact-inner">
+        <span>&copy; 2026 PAF-IAST Science Society • Pak-Austria Fachhochschule: IAS&amp;T</span>
+        <span>Venue: <strong>B2 MPH</strong> • Single Pass Covers Both Days</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Offscreen hidden QR element for PDF export -->
+  <div id="hidden-qr-generator" style="position: absolute; left: -9999px; top: -9999px; width: 256px; height: 256px;"></div>
+
+  <script>
+    // State
+    let activeAttendeeData = null;
+    let cachedUnivLogo = null;
+    let cachedSocietyLogo = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Check if an ID was passed in query parameter (e.g. ?id=PAFSS-26-004)
+      const urlParams = new URLSearchParams(window.location.search);
+      const passedId = urlParams.get('id');
+      if (passedId) {
+        const input = document.getElementById('ticket-search-input');
+        if (input) input.value = passedId.trim();
+        handleTicketLookup();
+      }
+    });
+
+    // Preload logos into base64 data URLs for instantaneous PDF generation
+    async function preloadLogos() {
+      if (!cachedUnivLogo) {
+        cachedUnivLogo = await loadImageAsDataUrl('assets/university_logo.png');
+      }
+      if (!cachedSocietyLogo) {
+        cachedSocietyLogo = await loadImageAsDataUrl('assets/society_logo.png');
+      }
+    }
+
+    function loadImageAsDataUrl(url) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width;
+            canvas.height = img.naturalHeight || img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+          } catch (e) {
+            resolve(null);
+          }
+        };
+        img.onerror = () => resolve(null);
+        img.src = url;
+      });
+    }
+
+    // Lookup Ticket Status via API
+    async function handleTicketLookup() {
+      const input = document.getElementById('ticket-search-input');
+      const query = input ? input.value.trim().toUpperCase() : '';
+
+      if (!query) {
+        alert("Please enter your Registration ID (e.g. PAFSS-26-001).");
+        if (input) input.focus();
+        return;
+      }
+
+      const container = document.getElementById('ticket-result-container');
+      const boxLoading = document.getElementById('result-loading');
+      const boxNotFound = document.getElementById('result-not-found');
+      const boxReview = document.getElementById('result-under-review');
+      const boxApproved = document.getElementById('result-approved');
+      const notFoundMsg = document.getElementById('not-found-message');
+
+      container.style.display = 'block';
+      boxLoading.style.display = 'block';
+      boxNotFound.style.display = 'none';
+      boxReview.style.display = 'none';
+      boxApproved.style.display = 'none';
+
+      try {
+        const res = await fetch(`/api/tickets/${encodeURIComponent(query)}`);
+        const data = await res.json();
+
+        boxLoading.style.display = 'none';
+
+        if (!res.ok || !data.success) {
+          boxNotFound.style.display = 'block';
+          if (notFoundMsg) {
+            notFoundMsg.innerText = data.message || `No registration record found for "${query}". Please double-check your ID.`;
+          }
+          activeAttendeeData = null;
+          return;
+        }
+
+        const attendee = data.attendee;
+        activeAttendeeData = attendee;
+
+        // Check if verified vs under review
+        if (!data.verified) {
+          // UNDER REVIEW / NOT VERIFIED YET
+          boxReview.style.display = 'block';
+          const rName = document.getElementById('review-name');
+          const rUniv = document.getElementById('review-univ-id');
+          const rId = document.getElementById('review-ticket-id');
+
+          if (rName) rName.innerText = attendee.name || 'Participant';
+          if (rUniv) rUniv.innerText = attendee.universityId || attendee.university_id || 'N/A';
+          if (rId) rId.innerText = attendee.id || query;
+
+        } else {
+          // VERIFIED & APPROVED -> Show Ticket Pass & enable PDF download
+          boxApproved.style.display = 'block';
+
+          // Confetti celebration
+          if (window.confetti) {
+            window.confetti({ particleCount: 75, spread: 65, origin: { y: 0.6 } });
+          }
+
+          const univid = attendee.universityId || attendee.university_id || 'N/A';
+          const tName = document.getElementById('t-disp-name');
+          const tUniv = document.getElementById('t-disp-univ');
+          const tPhone = document.getElementById('t-disp-phone');
+          const tEmail = document.getElementById('t-disp-email');
+          const tCode = document.getElementById('t-disp-code');
+          const qrBox = document.getElementById('ticket-qr-container');
+
+          if (tName) tName.innerText = attendee.name;
+          if (tUniv) tUniv.innerText = univid;
+          if (tPhone) tPhone.innerText = attendee.phone || 'N/A';
+          if (tEmail) tEmail.innerText = attendee.email || 'N/A';
+          if (tCode) tCode.innerText = attendee.id;
+
+          // Render crisp scannable QR code
+          if (qrBox) {
+            qrBox.innerHTML = '';
+            new QRCode(qrBox, {
+              text: attendee.id,
+              width: 140,
+              height: 140,
+              colorDark: "#0A192F",
+              colorLight: "#FFFFFF",
+              correctLevel: QRCode.CorrectLevel.H
+            });
+          }
+        }
+
+      } catch (err) {
+        boxLoading.style.display = 'none';
+        boxNotFound.style.display = 'block';
+        if (notFoundMsg) {
+          notFoundMsg.innerText = "Error connecting to the society verification server. Please try again.";
+        }
+      }
+    }
+
+    // High-Resolution PDF Ticket Generator (Zero Payment Mentions, Perfectly Proportioned Logos)
+    async function downloadCurrentTicketPDF() {
+      if (!activeAttendeeData) return;
+      const attendee = activeAttendeeData;
+
+      const { jsPDF } = window.jspdf || window;
+      if (!jsPDF) {
+        alert("PDF generator not ready. Please refresh the page.");
+        return;
+      }
+
+      await preloadLogos();
+
+      // Render QR code in hidden element
+      const qrContainer = document.getElementById('hidden-qr-generator');
+      qrContainer.innerHTML = '';
+      new QRCode(qrContainer, {
+        text: attendee.id,
+        width: 256,
+        height: 256,
+        colorDark: "#000000",
+        colorLight: "#FFFFFF",
+        correctLevel: QRCode.CorrectLevel.H
+      });
+
+      await new Promise(r => setTimeout(r, 60));
+
+      const qrCanvas = qrContainer.querySelector('canvas') || qrContainer.querySelector('img');
+      let qrDataUrl = '';
+      if (qrCanvas) {
+        qrDataUrl = qrCanvas.toDataURL ? qrCanvas.toDataURL('image/png') : qrCanvas.src;
+      }
+
+      // Landscape format: 220mm x 105mm
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: [220, 105]
+      });
+
+      // Background
+      doc.setFillColor(248, 250, 252);
+      doc.rect(0, 0, 220, 105, 'F');
+
+      // Card Body
+      doc.setFillColor(10, 25, 47);
+      doc.roundedRect(6, 6, 208, 93, 4, 4, 'F');
+
+      // Top Header Bar
+      doc.setFillColor(15, 34, 64);
+      doc.roundedRect(6, 6, 208, 16, 4, 4, 'F');
+      doc.rect(6, 16, 208, 6, 'F');
+
+      // Perfectly sized logos (Using natural aspect ratios)
+      // university_logo: 1024x890 (~1.15) -> 15mm width x 13mm height
+      // society_logo: 1024x512 (2.0) -> 26mm width x 13mm height
+      if (cachedUnivLogo) {
+        doc.addImage(cachedUnivLogo, 'PNG', 10, 7.5, 15, 13, undefined, 'FAST');
+      }
+      if (cachedSocietyLogo) {
+        doc.addImage(cachedSocietyLogo, 'PNG', 28, 7.5, 26, 13, undefined, 'FAST');
+      }
+
+      // Header Titles
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text("PAK-AUSTRIA FACHHOCHSCHULE: IAST", 58, 12);
+      doc.setFontSize(10);
+      doc.setTextColor(255, 255, 255);
+      doc.text("PAF-IAST SCIENCE SOCIETY  •  OFFICIAL ENTRY PASS", 58, 18);
+
+      // Pill badge: 2-DAY PASS
+      doc.setFillColor(14, 165, 233);
+      doc.roundedRect(172, 9, 36, 8, 4, 4, 'F');
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text("2-DAY SEMINAR PASS", 190, 14.5, { align: 'center' });
+
+      // Main Seminar Title
+      doc.setFontSize(11);
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.text("The Frontiers of Medicine & Smart Healthcare AI", 12, 29);
+
+      // Speakers & Schedule Row
+      doc.setFontSize(8.5);
+      doc.setTextColor(249, 115, 22);
+      doc.text("Speakers: Dr. Hamad Ali & Dr. Shah Faisal", 12, 35);
+
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184);
+      doc.setFont("helvetica", "normal");
+      doc.text("• Day 1: Wed 4th Nov (2:00-4:00 PM) | AMR & Global Health   • Day 2: Thu 5th Nov (2:00-4:00 PM) | AI in Medicine", 12, 40);
+
+      // Candidate Data Box (NO PAYMENT INFO AT ALL)
+      doc.setFillColor(17, 34, 60);
+      doc.setDrawColor(30, 58, 102);
+      doc.roundedRect(12, 43, 138, 50, 2, 2, 'FD');
+
+      const univid = attendee.universityId || attendee.university_id || 'N/A';
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text("ATTENDEE NAME", 16, 50);
+      doc.text("UNIVERSITY ID", 82, 50);
+
+      doc.text("EVENT DATES & TIMING", 16, 64);
+      doc.text("OFFICIAL VENUE", 82, 64);
+
+      doc.text("PHONE NUMBER", 16, 78);
+      doc.text("PERSONAL GMAIL", 82, 78);
+
+      doc.setFontSize(8.8);
+      doc.setTextColor(255, 255, 255);
+      doc.text(attendee.name.substring(0, 32), 16, 56);
+      doc.text(String(univid), 82, 56);
+
+      doc.text("Wed 4th & Thu 5th Nov • 2:00 - 4:00 PM", 16, 70);
+      doc.text("B2 MPH (Multipurpose Hall)", 82, 70);
+
+      doc.text(attendee.phone || 'N/A', 16, 84);
+      doc.text((attendee.email || 'N/A').substring(0, 30), 82, 84);
+
+      // Perforation line
+      doc.setDrawColor(100, 116, 139);
+      doc.setLineDashPattern([2, 2], 0);
+      doc.line(155, 24, 155, 95);
+      doc.setLineDashPattern([], 0);
+
+      // Right Stub: Pure White Frame for QR Code (Not cut off, sharp scannability)
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(162, 26, 46, 46, 3, 3, 'F');
+
+      if (qrDataUrl) {
+        doc.addImage(qrDataUrl, 'PNG', 165, 29, 40, 40);
+      }
+
+      // Ticket Code
+      doc.setFont("courier", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(attendee.id, 185, 78, { align: 'center' });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Scan at B2 MPH Entrance", 185, 83, { align: 'center' });
+      doc.text("PAF-IAST Science Society", 185, 87, { align: 'center' });
+
+      const cleanName = attendee.name.replace(/[^a-zA-Z0-9]/g, '_');
+      doc.save(`PAFSS_Seminar_Ticket_${attendee.id}_${cleanName}.pdf`);
+    }
+  </script>
+</body>
+</html>

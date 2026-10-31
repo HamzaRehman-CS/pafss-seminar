@@ -1478,22 +1478,24 @@ async function generateAttendeeTicketPDF(attendeeOrId) {
   doc.roundedRect(6, 6, 208, 16, 4, 4, 'F');
   doc.rect(6, 16, 208, 6, 'F'); // square bottom of top bar
 
-  // Embed Official Logos in Header
+  // Embed Official Logos in Header (Perfect Aspect Ratios)
+  // university_logo: 1024x890 (~1.15) -> 15mm width x 13mm height
+  // society_logo: 1024x512 (2.0) -> 26mm width x 13mm height
   if (cachedUnivLogo) {
-    doc.addImage(cachedUnivLogo, 'PNG', 10, 8, 26, 12, undefined, 'FAST');
+    doc.addImage(cachedUnivLogo, 'PNG', 10, 7.5, 15, 13, undefined, 'FAST');
   }
   if (cachedSocietyLogo) {
-    doc.addImage(cachedSocietyLogo, 'PNG', 39, 8, 12, 12, undefined, 'FAST');
+    doc.addImage(cachedSocietyLogo, 'PNG', 28, 7.5, 26, 13, undefined, 'FAST');
   }
 
   // Header Titles
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
   doc.setTextColor(148, 163, 184); // #94A3B8
-  doc.text("PAK-AUSTRIA FACHHOCHSCHULE: IAST", 54, 12);
+  doc.text("PAK-AUSTRIA FACHHOCHSCHULE: IAST", 58, 12);
   doc.setFontSize(10);
   doc.setTextColor(255, 255, 255);
-  doc.text("PAF-IAST SCIENCE SOCIETY  •  OFFICIAL ENTRY PASS", 54, 18);
+  doc.text("PAF-IAST SCIENCE SOCIETY  •  OFFICIAL ENTRY PASS", 58, 18);
 
   // Pill badge: 2-DAY PASS
   doc.setFillColor(14, 165, 233); // Sky Blue #0EA5E9
@@ -1506,7 +1508,7 @@ async function generateAttendeeTicketPDF(attendeeOrId) {
   doc.setFontSize(11);
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.text("2-Day Seminar Series: Antimicrobial Resistance & AI in Healthcare", 12, 29);
+  doc.text("The Frontiers of Medicine & Smart Healthcare AI", 12, 29);
 
   // Speakers & Schedule Row
   doc.setFontSize(8.5);
@@ -1516,45 +1518,37 @@ async function generateAttendeeTicketPDF(attendeeOrId) {
   doc.setFontSize(7.5);
   doc.setTextColor(148, 163, 184);
   doc.setFont("helvetica", "normal");
-  doc.text("• Day 1: Wed 4th Nov (2:00-4:00 PM) | AMR & Global Health  • Day 2: Thu 5th Nov (2:00-4:00 PM) | AI in Medicine", 12, 40);
+  doc.text("• Day 1: Wed 4th Nov (2:00-4:00 PM) | AMR & Global Health   • Day 2: Thu 5th Nov (2:00-4:00 PM) | AI in Medicine", 12, 40);
 
-  // Candidate Data Box
+  // Candidate Data Box (Expanded to take full vertical space, NO PAYMENT INFO)
   doc.setFillColor(17, 34, 60);
   doc.setDrawColor(30, 58, 102);
-  doc.roundedRect(12, 43, 138, 48, 2, 2, 'FD');
+  doc.roundedRect(12, 43, 138, 50, 2, 2, 'FD');
 
   const univid = attendee.universityId || attendee.university_id || 'N/A';
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.8);
+  doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
-  doc.text("ATTENDEE NAME", 16, 49);
-  doc.text("UNIVERSITY ID", 82, 49);
+  doc.text("ATTENDEE NAME", 16, 50);
+  doc.text("UNIVERSITY ID", 82, 50);
 
-  doc.text("EVENT DATES & TIMING", 16, 62);
-  doc.text("OFFICIAL VENUE", 82, 62);
+  doc.text("EVENT DATES & TIMING", 16, 64);
+  doc.text("OFFICIAL VENUE", 82, 64);
 
-  doc.text("PHONE NUMBER", 16, 75);
-  doc.text("PERSONAL GMAIL", 82, 75);
+  doc.text("PHONE NUMBER", 16, 78);
+  doc.text("PERSONAL GMAIL", 82, 78);
 
-  doc.setFontSize(8.5);
+  doc.setFontSize(8.8);
   doc.setTextColor(255, 255, 255);
-  doc.text(attendee.name.substring(0, 32), 16, 55);
-  doc.text(String(univid), 82, 55);
+  doc.text(attendee.name.substring(0, 32), 16, 56);
+  doc.text(String(univid), 82, 56);
 
-  doc.text("Wed 4th & Thu 5th Nov • 2:00 - 4:00 PM", 16, 68);
-  doc.text("B2 MPH (Multipurpose Hall)", 82, 68);
+  doc.text("Wed 4th & Thu 5th Nov • 2:00 - 4:00 PM", 16, 70);
+  doc.text("B2 MPH (Multipurpose Hall)", 82, 70);
 
-  doc.text(attendee.phone || 'N/A', 16, 81);
-  doc.text((attendee.email || 'N/A').substring(0, 30), 82, 81);
-
-  // 300 PKR Verified Tag
-  doc.setFillColor(16, 185, 129); // #10B981 Emerald Green
-  doc.roundedRect(16, 84, 48, 5, 2, 2, 'F');
-  doc.setFontSize(6);
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.text("✓ 300 PKR ENTRY FEE VERIFIED", 40, 87.5, { align: 'center' });
+  doc.text(attendee.phone || 'N/A', 16, 84);
+  doc.text((attendee.email || 'N/A').substring(0, 30), 82, 84);
 
   // Perforation dashed divider line
   doc.setDrawColor(100, 116, 139);

@@ -51,11 +51,57 @@ function closeRegisterModal() {
 function showRegistrationSuccess(attendee) {
   const modal = document.getElementById('success-modal');
   const refId = document.getElementById('success-ref-id');
-  const emailDisplay = document.getElementById('success-email-display');
+  const goTicketsBtn = document.getElementById('success-go-tickets-btn');
 
-  if (refId && attendee) refId.innerText = attendee.id || 'PAFSS-26-XXX';
-  if (emailDisplay && attendee) emailDisplay.innerText = attendee.email || 'your registered Gmail';
+  if (refId && attendee) {
+    refId.innerText = attendee.id || 'PAFSS-26-XXX';
+  }
+  if (goTicketsBtn && attendee) {
+    goTicketsBtn.href = `tickets.html?id=${encodeURIComponent(attendee.id)}`;
+  }
   if (modal) modal.classList.add('open');
+}
+
+// Copy Registration ID to Clipboard
+function copyRegistrationId() {
+  const refId = document.getElementById('success-ref-id');
+  if (!refId) return;
+  const text = refId.innerText.trim();
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showCopyFeedback();
+    }).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function showCopyFeedback() {
+  const btn = document.getElementById('btn-copy-success-id');
+  if (btn) {
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = "✅ Copied!";
+    btn.style.background = "#10B981";
+    btn.style.color = "#FFFFFF";
+    btn.style.borderColor = "#10B981";
+    setTimeout(() => {
+      btn.innerHTML = origHtml;
+      btn.style.background = "#FFFFFF";
+      btn.style.color = "var(--navy-primary)";
+      btn.style.borderColor = "var(--border-navy)";
+    }, 2000);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  showCopyFeedback();
 }
 
 // Close Success Confirmation Modal

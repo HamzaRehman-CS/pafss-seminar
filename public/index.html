@@ -51,7 +51,10 @@
           </div>
         </div>
 
-        <div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <a href="tickets.html" class="glass-btn-subtle nav-tickets-btn" style="text-decoration: none; padding: 7px 14px; font-size: 0.82rem; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
+            <span>🎟️ Tickets</span>
+          </a>
           <button class="navy-primary-btn nav-register-btn" onclick="openRegisterModal()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             <span>Register (300 PKR)</span>
@@ -144,17 +147,22 @@
 
         </div>
 
-        <!-- Bottom Action Bar: Fee & Single Register Button -->
+        <!-- Bottom Action Bar: Fee, Tickets Link & Register Button -->
         <div class="unified-card-footer">
           <div class="fee-badge-container">
             <span class="fee-main-text">Entry Fee: <strong>300 PKR</strong></span>
             <span class="fee-sub-text">Single Pass Valid for Both Days &amp; All Keynotes</span>
           </div>
 
-          <button class="navy-primary-btn register-trigger-btn" onclick="openRegisterModal()">
-            <span>Register for 2-Day Seminar (300 PKR)</span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="tickets.html" class="glass-btn-subtle" style="text-decoration: none; padding: 12px 20px; font-weight: 700; font-size: 0.88rem; display: inline-flex; align-items: center; gap: 6px;">
+              <span>🎟️ Tickets &amp; Status</span>
+            </a>
+            <button class="navy-primary-btn register-trigger-btn" onclick="openRegisterModal()">
+              <span>Register for 2-Day Seminar (300 PKR)</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
         </div>
 
       </article>
@@ -261,7 +269,7 @@
   </div>
 
   <!-- ===================================================================
-       REGISTRATION SUCCESS MODAL (GMAIL DELIVERY CONFIRMATION)
+       REGISTRATION SUCCESS MODAL (REGISTRATION ID + TICKETS PORTAL LINK)
        =================================================================== -->
   <div class="glass-modal-overlay" id="success-modal" role="dialog" aria-modal="true" aria-labelledby="success-modal-title">
     <div class="glass-modal-box success-modal-box">
@@ -277,41 +285,40 @@
         <h2 class="success-title">Congratulations!</h2>
         <p class="success-subtitle">You have successfully registered for the <strong>2-Day Seminar Series</strong>.</p>
         
-        <div class="success-ref-pill">
-          <span>Registration Reference ID:</span>
-          <strong id="success-ref-id">PAFSS-26-001</strong>
+        <!-- Registration ID with 1-Click Copy Button -->
+        <div class="success-ref-pill" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; margin: 16px 0;">
+          <div style="text-align: left;">
+            <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">Your Registration ID</span>
+            <strong id="success-ref-id" style="font-size: 1.25rem; color: var(--navy-dark); font-family: 'JetBrains Mono', monospace;">PAFSS-26-001</strong>
+          </div>
+          <button type="button" class="btn-copy-id" id="btn-copy-success-id" onclick="copyRegistrationId()" title="Copy ID to clipboard" style="padding: 7px 14px; font-size: 0.82rem; font-weight: 700; border-radius: var(--radius-pill); cursor: pointer; border: 1px solid var(--border-navy); background: #FFFFFF; color: var(--navy-primary); display: inline-flex; align-items: center; gap: 5px; transition: var(--transition-fast);">
+            📋 Copy ID
+          </button>
         </div>
 
-        <div class="success-notice-card">
+        <!-- Verification Notice Card -->
+        <div class="success-notice-card" style="text-align: left; margin: 14px 0;">
           <div class="notice-card-header">
-            <span class="notice-mail-icon">✉️</span>
-            <strong>Important Ticket &amp; Admission Notice</strong>
+            <span class="notice-mail-icon">📌</span>
+            <strong>Keep Your Registration ID Safe!</strong>
           </div>
-          <p class="notice-body-text">
-            Our team is currently verifying your 300 PKR payment receipt. Once verified, your official entry pass with your unique admission QR code will be delivered directly to your registered Gmail address:
+          <p class="notice-body-text" style="font-size: 0.85rem; line-height: 1.55; margin: 6px 0 10px; color: var(--text-body);">
+            Your 300 PKR payment verification is now under review by the society. Once approved in the admin portal, your official entry pass with unique scannable QR code will be ready for instant download on the <strong>Tickets</strong> page.
           </p>
-          <div class="registered-email-highlight" id="success-email-display">user@gmail.com</div>
-          <p class="notice-body-subtext">
-            <strong>You will receive your ticket before Tuesday.</strong>
-          </p>
-
-          <!-- PROMINENT EMAIL & SPAM CHECK HIGHLIGHT -->
-          <div class="mail-alert-highlight-box">
-            <div class="mail-alert-icon">🔔</div>
-            <div class="mail-alert-content">
-              <span class="mail-alert-title">Keep checking your Gmail inbox regularly!</span>
-              <span class="mail-alert-desc">Please be sure to also check your <strong class="spam-pill-tag">Spam / Junk folder</strong> in case your ticket arrives there.</span>
-            </div>
-          </div>
-
-          <div class="notice-rule-tag">
-            ⚠️ <em>Only verified tickets issued after verification from the society will be valid for entry at the B2 MPH hall entrance.</em>
+          <div class="notice-rule-tag" style="margin-top: 8px;">
+            💡 <em>Copy your Registration ID above, then open the Tickets page to check your approval position anytime.</em>
           </div>
         </div>
 
-        <button class="navy-primary-btn btn-full-width" onclick="closeSuccessModal()" style="margin-top: 14px;">
-          Done &amp; Return to Home
-        </button>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px;">
+          <a href="tickets.html" id="success-go-tickets-btn" class="navy-primary-btn btn-full-width" style="text-decoration: none; text-align: center; padding: 12px; font-weight: 800; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <span>🎟️ Go to Tickets Page</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+          <button class="glass-btn-subtle btn-full-width" onclick="closeSuccessModal()" style="padding: 10px; font-size: 0.86rem;">
+            Done &amp; Return to Home
+          </button>
+        </div>
       </div>
     </div>
   </div>
