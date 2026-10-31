@@ -1,12 +1,13 @@
 /**
  * PAF-IAST SCIENCE FESTA 2026 - ORGANIZER & GATE ADMIN PORTAL
+ * Theme: Pure White & Deep Navy Blue
  * Credentials: ID: pafss26 | Pass: seminar
  * Features:
  *  - Unified 2-Day Seminar Candidate Management
  *  - 300 PKR Payment Verification with High-Res Receipt Lightbox
- *  - One-click Payment Approval & Rejection
- *  - Complete Permanent Candidate & Scan History Deletion with 100% Neon DB Sync
- *  - Real-Time Gate QR Scanner with Payment Check
+ *  - 10-Second Revoke / Undo for Single & Bulk Deletions
+ *  - Real-Time Gate QR Scanner with Payment Verification Gate
+ *  - 100% Neon DB Sync & Hardware Accelerated Zero-Lag UI
  */
 
 // Application State
@@ -18,7 +19,10 @@ let isScannerRunning = false;
 let currentFilter = 'all';
 let currentActiveReceiptAttendee = null;
 
-// Synthesized Audio Feedback
+// State for 10-Second Pending Deletion Revoke System
+let pendingDeletion = null; // { type: 'single' | 'bulk', id, name, candidate, index, allCandidates, timeoutId, intervalId }
+
+// Audio Feedback
 let audioCtx = null;
 function getAudioContext() {
   if (!audioCtx) {
@@ -43,8 +47,8 @@ function playSound(type) {
 
     if (type === 'success') {
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, now); // D5
-      osc.frequency.setValueAtTime(880, now + 0.1); // A5
+      osc.frequency.setValueAtTime(587.33, now);
+      osc.frequency.setValueAtTime(880, now + 0.1);
       gain.gain.setValueAtTime(0.18, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
       osc.start(now);
@@ -66,7 +70,7 @@ function playSound(type) {
       osc.stop(now + 0.3);
     }
   } catch (e) {
-    // Ignore audio restriction
+    // Ignore audio restrictions
   }
 }
 
@@ -76,7 +80,6 @@ function playSound(type) {
 document.addEventListener('DOMContentLoaded', () => {
   startClock();
 
-  // Check saved session
   if (sessionStorage.getItem('pafss_admin_token') === 'authorized') {
     adminAuthenticated = true;
     showDashboard();
@@ -95,7 +98,7 @@ function startClock() {
 
 // Switch Views
 function showLogin() {
-  document.getElementById('admin-login-screen').style.display = 'flex';
+  document.getElementById('admin-login-screen').style.display = 'block';
   document.getElementById('admin-dashboard-screen').style.display = 'none';
   document.getElementById('btn-admin-signout').style.display = 'none';
   setTimeout(() => {
@@ -113,7 +116,7 @@ function showDashboard() {
   loadScanHistory();
 }
 
-// Handle Login (Credentials: ID: pafss26, Pass: seminar)
+// Handle Login (ID: pafss26, Pass: seminar)
 async function handleLoginSubmit(e) {
   e.preventDefault();
   const idInput = document.getElementById('admin-id-input').value.trim();
@@ -143,6 +146,9 @@ async function handleLoginSubmit(e) {
 }
 
 function adminSignOut() {
+  if (pendingDeletion) {
+    commitPendingDeletion();
+  }
   sessionStorage.removeItem('pafss_admin_token');
   adminAuthenticated = false;
   if (html5Scanner && isScannerRunning) {
@@ -152,7 +158,7 @@ function adminSignOut() {
 }
 
 // ===================================================================
-// TAB SWITCHING (ORGANIZED & RESPONSIVE)
+// TAB SWITCHING (SMOOTH & ZERO LAG)
 // ===================================================================
 function switchAdminTab(tabName) {
   const btnDir = document.getElementById('tab-btn-directory');
@@ -209,9 +215,20 @@ function updateStatsUI(stats) {
 
   if (sTotal) sTotal.innerText = stats.totalAttendees || 0;
   if (sVerified) sVerified.innerText = stats.verifiedCount || 0;
-  if (sRevenue) sRevenue.innerText = `Revenue: ${stats.totalRevenue || '0 PKR'}`;
+  if (sRevenue) sRevenue.innerText = `Total: ${stats.totalRevenue || '0 PKR'}`;
   if (sPending) sPending.innerText = stats.pendingCount || 0;
   if (sChecked) sChecked.innerText = stats.checkedInCount || 0;
+}
+
+function updateStatsFromLocal() {
+  const verifiedCount = localAttendeeCache.filter(a => a.paymentStatus === 'verified' || a.payment_status === 'verified').length;
+  updateStatsUI({
+    totalAttendees: localAttendeeCache.length,
+    verifiedCount: verifiedCount,
+    pendingCount: localAttendeeCache.filter(a => !(a.paymentStatus === 'verified' || a.payment_status === 'verified')).length,
+    checkedInCount: localAttendeeCache.filter(a => a.checkedIn).length,
+    totalRevenue: `${verifiedCount * 300} PKR`
+  });
 }
 
 function setFilter(filter, btn) {
@@ -301,7 +318,7 @@ function renderDirectoryTable(attendees) {
     // Gate Status Badge
     const gateBadge = a.checkedIn
       ? `<span class="h-badge-tag tag-first">Admitted (${new Date(a.checkedInAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})</span>`
-      : `<span class="h-badge-tag" style="background:#F1F5F9; color:#64748B;">Not Checked In</span>`;
+      : `<span class="h-badge-tag" style="background:var(--card-subtle); color:var(--text-muted);">Not Checked In</span>`;
 
     const univid = a.universityId || a.university_id || 'N/A';
 
@@ -309,7 +326,7 @@ function renderDirectoryTable(attendees) {
       <tr>
         <td><code>${a.id}</code></td>
         <td>
-          <strong style="color: var(--text-main); font-size: 0.92rem;">${a.name}</strong>
+          <strong style="color: var(--navy-dark); font-size: 0.92rem;">${a.name}</strong>
         </td>
         <td><span class="univ-id-chip">${univid}</span></td>
         <td>
@@ -352,7 +369,6 @@ async function verifyCandidatePayment(id, status) {
     renderDirectoryTable(localAttendeeCache);
     fetchDashboardData();
 
-    // If receipt lightbox is open, refresh it
     if (currentActiveReceiptAttendee && currentActiveReceiptAttendee.id === id) {
       closeReceiptModal();
     }
@@ -385,17 +401,17 @@ function viewReceiptImage(attendeeId) {
   meta.innerHTML = `
     <div><strong>Candidate:</strong> ${attendee.name} (${attendee.universityId || attendee.university_id})</div>
     <div><strong>Ticket ID:</strong> <code>${attendee.id}</code> • <strong>Phone:</strong> ${attendee.phone}</div>
-    <div><strong>Fee:</strong> 300 PKR • <strong>Current Status:</strong> <span style="font-weight: 800; color:${isVerified ? '#059669':'#D97706'}">${isVerified ? 'VERIFIED' : 'PENDING'}</span></div>
+    <div><strong>Fee:</strong> 300 PKR • <strong>Current Status:</strong> <span style="font-weight: 800; color:${isVerified ? 'var(--status-green)':'var(--status-amber)'}">${isVerified ? 'VERIFIED' : 'PENDING'}</span></div>
   `;
 
   actions.innerHTML = `
-    <button class="glass-btn glass-btn-sky" onclick="verifyCandidatePayment('${attendee.id}', 'verified')" style="padding: 8px 18px;">
+    <button class="navy-primary-btn" onclick="verifyCandidatePayment('${attendee.id}', 'verified')" style="padding: 8px 18px;">
       ✅ Approve Payment (300 PKR)
     </button>
-    <button class="glass-btn glass-btn-danger" onclick="verifyCandidatePayment('${attendee.id}', 'rejected')" style="padding: 8px 18px;">
+    <button class="glass-btn-danger" onclick="verifyCandidatePayment('${attendee.id}', 'rejected')" style="padding: 8px 18px;">
       ❌ Reject Payment
     </button>
-    <button class="glass-btn glass-btn-subtle" onclick="closeReceiptModal()" style="padding: 8px 18px;">
+    <button class="glass-btn-subtle" onclick="closeReceiptModal()" style="padding: 8px 18px;">
       Close
     </button>
   `;
@@ -409,54 +425,213 @@ function closeReceiptModal() {
   currentActiveReceiptAttendee = null;
 }
 
-// Delete Single Candidate
-async function deleteSingleCandidate(id, name) {
-  if (!confirm(`Are you sure you want to permanently delete candidate "${name}" (${id}) from the database?`)) {
-    return;
+// ===================================================================
+// 10-SECOND REVOKE / UNDO DELETION SYSTEM
+// ===================================================================
+function showTransientToast(message, isError = false) {
+  const toast = document.getElementById('admin-transient-toast');
+  if (!toast) return;
+  toast.innerText = message;
+  toast.style.background = isError ? '#DC2626' : 'var(--navy-dark)';
+  toast.style.display = 'block';
+  toast.style.opacity = '1';
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => { toast.style.display = 'none'; }, 250);
+  }, 3500);
+}
+
+function showRevokeToast(text, durationMs, onCommit) {
+  const toast = document.getElementById('admin-revoke-toast');
+  const textEl = document.getElementById('revoke-toast-text');
+  const countEl = document.getElementById('revoke-countdown');
+  const fillEl = document.getElementById('revoke-progress-fill');
+  if (!toast) return { timeoutId: null, intervalId: null };
+
+  textEl.innerText = text;
+  toast.style.display = 'flex';
+  toast.offsetHeight; // trigger reflow
+  toast.classList.add('visible');
+
+  let remainingSec = Math.ceil(durationMs / 1000);
+  countEl.innerText = remainingSec;
+  fillEl.style.transition = 'none';
+  fillEl.style.width = '100%';
+
+  requestAnimationFrame(() => {
+    fillEl.style.transition = `width ${durationMs}ms linear`;
+    fillEl.style.width = '0%';
+  });
+
+  const intervalId = setInterval(() => {
+    remainingSec--;
+    if (remainingSec > 0) {
+      countEl.innerText = remainingSec;
+    } else {
+      clearInterval(intervalId);
+    }
+  }, 1000);
+
+  const timeoutId = setTimeout(() => {
+    clearInterval(intervalId);
+    hideRevokeToast();
+    if (onCommit) onCommit();
+  }, durationMs);
+
+  return { timeoutId, intervalId };
+}
+
+function hideRevokeToast() {
+  const toast = document.getElementById('admin-revoke-toast');
+  if (toast) {
+    toast.classList.remove('visible');
+    setTimeout(() => { toast.style.display = 'none'; }, 250);
+  }
+}
+
+// Delete Single Candidate with 10-Second Revoke Window
+function deleteSingleCandidate(id, name) {
+  // If another deletion is already pending, finalize it immediately
+  if (pendingDeletion) {
+    commitPendingDeletion();
   }
 
+  const candidateIndex = localAttendeeCache.findIndex(a => a.id.toUpperCase() === id.toUpperCase());
+  if (candidateIndex === -1) return;
+  const candidate = localAttendeeCache[candidateIndex];
+
+  // Immediately pull candidate out of active view
+  localAttendeeCache.splice(candidateIndex, 1);
+  renderDirectoryTable(localAttendeeCache);
+  updateStatsFromLocal();
+
+  const duration = 10000;
+  const { timeoutId, intervalId } = showRevokeToast(
+    `Candidate "${name}" (${id}) scheduled for deletion.`,
+    duration,
+    () => {
+      commitSingleDelete(id, name);
+    }
+  );
+
+  pendingDeletion = {
+    type: 'single',
+    id: id,
+    name: name,
+    candidate: candidate,
+    index: candidateIndex,
+    timeoutId: timeoutId,
+    intervalId: intervalId
+  };
+}
+
+async function commitSingleDelete(id, name) {
   try {
     const res = await fetch(`/api/attendees/${id}`, { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Error deleting candidate');
-
-    // Immediately remove from local cache and DOM
-    localAttendeeCache = localAttendeeCache.filter(a => a.id.toUpperCase() !== id.toUpperCase());
-    renderDirectoryTable(localAttendeeCache);
+    showTransientToast(`Candidate "${name || id}" permanently deleted from database.`);
     fetchDashboardData();
-    loadScanHistory();
-
   } catch (err) {
-    alert(err.message || 'Could not delete candidate');
+    console.error("Delete commit error:", err);
+  } finally {
+    if (pendingDeletion && pendingDeletion.id === id) {
+      pendingDeletion = null;
+    }
   }
 }
 
-// Delete All Candidates (Double Confirmation)
-async function confirmDeleteAllCandidates() {
-  if (!confirm("⚠️ DANGER: Are you sure you want to delete ALL registered candidates from the database? This cannot be undone.")) {
+// Delete All Candidates with 10-Second Revoke Window
+function confirmDeleteAllCandidates() {
+  if (localAttendeeCache.length === 0) {
+    alert("There are no candidates in the directory to delete.");
     return;
   }
 
-  const promptResp = prompt('To confirm permanent deletion of ALL candidates, please type "DELETE" below:');
-  if (promptResp !== 'DELETE') {
-    alert("Deletion cancelled. Database was not modified.");
+  if (!confirm(`⚠️ DANGER: Schedule deletion of ALL ${localAttendeeCache.length} candidates? You will have 10 seconds to revoke this action.`)) {
     return;
   }
 
+  if (pendingDeletion) {
+    commitPendingDeletion();
+  }
+
+  const allCandidatesBackup = localAttendeeCache.slice();
+  localAttendeeCache = [];
+  renderDirectoryTable([]);
+  updateStatsUI({ totalAttendees: 0, verifiedCount: 0, pendingCount: 0, checkedInCount: 0, totalRevenue: '0 PKR' });
+
+  const duration = 10000;
+  const { timeoutId, intervalId } = showRevokeToast(
+    `All ${allCandidatesBackup.length} candidates scheduled for deletion.`,
+    duration,
+    () => {
+      commitBulkDelete();
+    }
+  );
+
+  pendingDeletion = {
+    type: 'bulk',
+    allCandidates: allCandidatesBackup,
+    timeoutId: timeoutId,
+    intervalId: intervalId
+  };
+}
+
+async function commitBulkDelete() {
   try {
     const res = await fetch('/api/attendees', { method: 'DELETE' });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Error deleting all candidates');
-
-    localAttendeeCache = [];
-    renderDirectoryTable([]);
+    if (!res.ok) throw new Error(data.message || 'Error clearing candidates');
+    showTransientToast("All candidates permanently deleted from database.");
     fetchDashboardData();
-    loadScanHistory();
-    alert("All candidate records have been permanently cleared from database.");
-
   } catch (err) {
-    alert(err.message || 'Could not clear candidates');
+    console.error("Bulk delete commit error:", err);
+  } finally {
+    if (pendingDeletion && pendingDeletion.type === 'bulk') {
+      pendingDeletion = null;
+    }
   }
+}
+
+function commitPendingDeletion() {
+  if (!pendingDeletion) return;
+  clearTimeout(pendingDeletion.timeoutId);
+  clearInterval(pendingDeletion.intervalId);
+  hideRevokeToast();
+
+  if (pendingDeletion.type === 'single') {
+    commitSingleDelete(pendingDeletion.id, pendingDeletion.name);
+  } else if (pendingDeletion.type === 'bulk') {
+    commitBulkDelete();
+  }
+}
+
+function revokePendingDeletion() {
+  if (!pendingDeletion) return;
+
+  clearTimeout(pendingDeletion.timeoutId);
+  clearInterval(pendingDeletion.intervalId);
+  hideRevokeToast();
+
+  if (pendingDeletion.type === 'single') {
+    // Restore candidate back into local cache and UI
+    localAttendeeCache.splice(pendingDeletion.index, 0, pendingDeletion.candidate);
+    renderDirectoryTable(localAttendeeCache);
+    updateStatsFromLocal();
+    showTransientToast(`✅ Deletion revoked! Candidate "${pendingDeletion.candidate.name}" has been restored.`);
+    fetchDashboardData();
+  } else if (pendingDeletion.type === 'bulk') {
+    // Restore all candidates back
+    localAttendeeCache = pendingDeletion.allCandidates.slice();
+    renderDirectoryTable(localAttendeeCache);
+    updateStatsFromLocal();
+    showTransientToast(`✅ Deletion revoked! All ${localAttendeeCache.length} candidate records have been restored.`);
+    fetchDashboardData();
+  }
+
+  pendingDeletion = null;
 }
 
 // Export CSV
@@ -522,14 +697,12 @@ function startCameraScanner() {
     (decodedText) => {
       processTicketScan(decodedText);
     },
-    (errorMessage) => {
-      // scanning actively
-    }
+    () => {}
   ).then(() => {
     isScannerRunning = true;
     if (toggleBtn) {
       toggleBtn.innerText = "Stop Camera Scan";
-      toggleBtn.className = "glass-btn glass-btn-subtle";
+      toggleBtn.className = "glass-btn-subtle";
     }
   }).catch((err) => {
     console.error("Camera access error:", err);
@@ -543,8 +716,8 @@ function stopCameraScanner() {
       isScannerRunning = false;
       const toggleBtn = document.getElementById('btn-camera-toggle');
       if (toggleBtn) {
-        toggleBtn.innerText = "Start Camera Scan";
-        toggleBtn.className = "glass-btn glass-btn-sky";
+        toggleBtn.innerText = "📷 Start Camera Scan";
+        toggleBtn.className = "navy-primary-btn";
       }
     }).catch(e => console.warn(e));
   }
@@ -583,11 +756,11 @@ async function handleFileQrScan(e) {
 let lastScannedText = '';
 let lastScannedTimestamp = 0;
 
-// Main QR Scan Processor (Fast Local Validation + Sync to Neon DB)
+// Main QR Scan Processor
 async function processTicketScan(ticketCode) {
   const now = Date.now();
   if (ticketCode === lastScannedText && now - lastScannedTimestamp < 2500) {
-    return; // throttle duplicate rapid trigger
+    return;
   }
   lastScannedText = ticketCode;
   lastScannedTimestamp = now;
@@ -694,7 +867,6 @@ async function processTicketScan(ticketCode) {
   }
 }
 
-// Background sync to server
 async function syncScanToServer(ticketId) {
   try {
     await fetch('/api/scan', {
@@ -720,22 +892,19 @@ function renderPreviewResult(result) {
 
   placeholder.style.display = 'none';
   previewCard.style.display = 'block';
-  previewCard.className = 'scan-result-card';
 
   if (result.status === 'FIRST_CHECKIN') {
-    // GREEN: Name, checkmark, admission recorded
-    previewCard.classList.add('scan-first-time');
+    banner.className = 'scan-status-banner banner-green';
     const a = result.attendee || {};
     const univid = a.universityId || a.university_id || 'N/A';
     const attendeeName = a.name || 'Participant';
 
     banner.innerHTML = `
-      <span style="font-size: 1.4rem;">✅</span>
-      <span>Admitted: ${attendeeName} (300 PKR Verified)</span>
+      <span>✅ Admitted: ${attendeeName} (300 PKR Verified)</span>
     `;
 
     details.innerHTML = `
-      <div style="font-size: 0.95rem; font-weight: 800; color: #047857; margin-bottom: 6px;">
+      <div style="font-size: 0.95rem; font-weight: 800; color: var(--status-green); margin-bottom: 6px;">
         ${attendeeName} has been verified and admitted for the 2-Day Seminar Series.
       </div>
       <div><strong>Candidate:</strong> ${attendeeName} • <strong>Univ ID:</strong> ${univid}</div>
@@ -745,29 +914,26 @@ function renderPreviewResult(result) {
     `;
 
   } else if (result.status === 'PAYMENT_PENDING') {
-    // AMBER: Payment pending verification
-    previewCard.classList.add('scan-already-checked');
+    banner.className = 'scan-status-banner banner-amber';
     const a = result.attendee || {};
     const univid = a.universityId || a.university_id || 'N/A';
     const attendeeName = a.name || 'Participant';
 
     banner.innerHTML = `
-      <span style="font-size: 1.4rem;">⚠️</span>
-      <span>Payment Unverified: ${attendeeName}</span>
+      <span>⚠️ Payment Unverified: ${attendeeName}</span>
     `;
 
     details.innerHTML = `
-      <div style="font-size: 0.95rem; font-weight: 800; color: #B45309; margin-bottom: 6px;">
+      <div style="font-size: 0.95rem; font-weight: 800; color: var(--status-amber); margin-bottom: 6px;">
         ⚠️ This ticket has NOT been approved for the 300 PKR entry fee!
       </div>
       <div><strong>Candidate:</strong> ${attendeeName} • <strong>Univ ID:</strong> ${univid}</div>
       <div><strong>Ticket ID:</strong> <code>${a.id}</code></div>
-      <div style="color: #B91C1C; font-weight: 700; margin-top: 4px;">Action Required: Direct candidate to the organizer desk or verify their receipt in Admin.</div>
+      <div style="color: var(--status-red); font-weight: 700; margin-top: 4px;">Action Required: Direct candidate to the organizer desk or verify their receipt in Admin.</div>
     `;
 
   } else if (result.status === 'ALREADY_SCANNED') {
-    // AMBER: Already scanned, with person's name
-    previewCard.classList.add('scan-already-checked');
+    banner.className = 'scan-status-banner banner-amber';
     const a = result.attendee || {};
     const univid = a.universityId || a.university_id || 'N/A';
     const attendeeName = a.name || 'Participant';
@@ -776,12 +942,11 @@ function renderPreviewResult(result) {
       : 'Earlier';
 
     banner.innerHTML = `
-      <span style="font-size: 1.4rem;">⚠️</span>
-      <span>Already Scanned: ${attendeeName}</span>
+      <span>⚠️ Already Scanned: ${attendeeName}</span>
     `;
 
     details.innerHTML = `
-      <div style="font-size: 0.95rem; font-weight: 800; color: #B45309; margin-bottom: 6px;">
+      <div style="font-size: 0.95rem; font-weight: 800; color: var(--status-amber); margin-bottom: 6px;">
         ⚠️ DUPLICATE ENTRY: This pass was already admitted earlier!
       </div>
       <div><strong>Candidate:</strong> ${attendeeName} • <strong>Univ ID:</strong> ${univid}</div>
@@ -791,17 +956,15 @@ function renderPreviewResult(result) {
     `;
 
   } else {
-    // RED: Wrong code / not recognized / declined
-    previewCard.classList.add('scan-invalid');
+    banner.className = 'scan-status-banner banner-red';
     banner.innerHTML = `
-      <span style="font-size: 1.4rem;">❌</span>
-      <span>Wrong Code / Access Declined</span>
+      <span>❌ Wrong Code / Access Declined</span>
     `;
     details.innerHTML = `
-      <div style="font-size: 0.92rem; font-weight: 800; color: #B91C1C; margin-bottom: 4px;">
+      <div style="font-size: 0.92rem; font-weight: 800; color: var(--status-red); margin-bottom: 4px;">
         Wrong code! Unrecognized QR code.
       </div>
-      <div style="color: #64748B; font-size: 0.82rem;">
+      <div style="color: var(--text-muted); font-size: 0.82rem;">
         ${result.message || 'Only official seminar tickets generated by this portal are accepted.'}
       </div>
     `;
@@ -834,13 +997,13 @@ function renderScanHistory(history) {
     let tagText = 'ADMITTED';
 
     if (item.status === 'PAYMENT_PENDING') {
-      tagClass = 'tag-dup';
+      tagClass = 'badge-status-pending';
       tagText = 'FEE PENDING';
     } else if (item.status === 'ALREADY_SCANNED') {
-      tagClass = 'tag-dup';
+      tagClass = 'badge-status-pending';
       tagText = 'DUPLICATE';
     } else if (item.status === 'INVALID') {
-      tagClass = 'tag-inv';
+      tagClass = 'badge-status-rejected';
       tagText = 'WRONG CODE';
     }
 
@@ -848,18 +1011,18 @@ function renderScanHistory(history) {
     const scanId = item.scanId || item.scan_id;
 
     return `
-      <div class="history-row-item">
+      <div class="history-item-row">
         <div>
-          <strong style="color: var(--text-main); font-size: 0.86rem;">${item.attendeeName || item.attendee_name || 'Unknown'}</strong>
+          <strong style="color: var(--navy-dark); font-size: 0.86rem;">${item.attendeeName || item.attendee_name || 'Unknown'}</strong>
           <span style="color: var(--text-muted); margin-left: 4px;"><code>${item.ticketId || item.ticket_id}</code></span>
           <div style="font-size: 0.72rem; color: var(--text-muted);">${item.message || ''}</div>
         </div>
         <div style="text-align: right; display: flex; align-items: center; gap: 8px;">
           <div>
-            <span class="h-badge-tag ${tagClass}">${tagText}</span>
+            <span class="${tagClass}" style="font-size: 0.7rem; padding: 2px 6px;">${tagText}</span>
             <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 2px;">${timeStr}</div>
           </div>
-          <button class="btn-delete-log-icon" onclick="deleteScanLogItem('${scanId}')" title="Delete scan log">×</button>
+          <button class="btn-delete-row" style="padding: 2px 6px; font-size: 0.75rem;" onclick="deleteScanLogItem('${scanId}')" title="Delete scan log">×</button>
         </div>
       </div>
     `;

@@ -12,25 +12,17 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
 
-  <!-- High-Resolution Offline-Ready Libraries for PDF, QR, Canvas & Confetti -->
-  <script src="qrcode.min.js"></script>
-  <script src="html2canvas.min.js"></script>
-  <script src="jspdf.umd.min.js"></script>
+  <!-- Lightweight Libraries -->
   <script src="confetti.browser.min.js"></script>
 
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-  <!-- Ambient Blurry Splashes (Clean & Weightless) -->
-  <div class="ambient-bg-container" aria-hidden="true">
-    <div class="splash-orb orb-sky"></div>
-    <div class="splash-orb orb-orange"></div>
-    <div class="splash-orb orb-royal"></div>
-    <div class="splash-orb orb-white"></div>
-  </div>
+  <!-- Clean Static Ambient Background (Zero GPU Lag) -->
+  <div class="ambient-bg-container" aria-hidden="true"></div>
 
-  <!-- FLOATING SIDE EMOJIS (Desktop Only, Hidden on Mobile) -->
+  <!-- FLOATING SIDE EMOJIS (Desktop Only, Subtle & Lightweight) -->
   <aside class="side-emoji-dock dock-left" aria-hidden="true">
     <div class="glass-emoji-circle" title="Scientific Research">🧪</div>
     <div class="glass-emoji-circle" title="Laboratory Microbiology">🧫</div>
@@ -46,7 +38,7 @@
   <!-- APPLICATION SCREEN WRAPPER -->
   <div class="app-screen-container">
 
-    <!-- FROSTED GLASS TOP NAVIGATION (Streamlined & Mobile-Optimized) -->
+    <!-- TOP NAVIGATION BAR (White & Navy Minimalist) -->
     <header class="glass-navbar">
       <div class="nav-inner">
         <div class="nav-logos-cluster">
@@ -60,126 +52,119 @@
         </div>
 
         <div>
-          <button class="glass-btn glass-btn-orange nav-register-btn" onclick="openRegisterModal()">
-            <span class="glass-icon-wrapper">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            </span>
+          <button class="navy-primary-btn nav-register-btn" onclick="openRegisterModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             <span>Register (300 PKR)</span>
           </button>
         </div>
       </div>
     </header>
 
-    <!-- COMPACT & AIRY HERO BRIEF -->
+    <!-- COMPACT HERO BRIEF -->
     <section class="hero-compact">
       <div class="pill-info-meta">
         <span class="pulse-indicator"></span>
         <span>4th &amp; 5th November 2026 • 2:00 PM to 4:00 PM (Both Days) • Venue: B2 MPH</span>
       </div>
       <h1 class="hero-super-title">
-        The Frontiers of <span class="gradient-title-sky">Medicine</span> &amp; <span class="gradient-title-orange">Smart AI</span>
+        The Frontiers of Medicine &amp; Smart Healthcare AI
       </h1>
       <p class="hero-subtitle-brief">
         One unified 2-day pass covering both keynote seminars. Entry fee: <strong>300 PKR</strong>.
       </p>
     </section>
 
-    <!-- MAIN VIEWPORT: BOTH PROFESSORS & DAYS (SIDE BY SIDE) -->
+    <!-- MAIN VIEWPORT: UNIFIED 2-DAY SEMINAR (SINGLE TAB) -->
     <main class="main-events-viewport">
-      <div class="events-side-by-side-grid">
+      <article class="unified-seminar-card" id="unified-event-card">
         
-        <!-- DAY 1: ANTIMICROBIAL RESISTANCE (DR. HAMAD ALI) -->
-        <article class="glass-event-card card-sem1-edge" id="event-card-1">
-          <div>
-            <div class="card-schedule-pill sched-sem1">
-              <span>Day 1 • Wednesday, 4th November • 2:00 to 4:00 PM • B2 MPH</span>
+        <!-- Speakers Header: Both Instructors Side-by-Side on Top -->
+        <div class="instructors-top-row">
+          
+          <!-- Instructor 1: Dr. Hamad Ali -->
+          <div class="instructor-profile-box">
+            <div class="instructor-avatar-frame">
+              <img src="assets/dr_hamad_ali.png" alt="Dr. Hamad Ali" class="instructor-photo">
             </div>
-
-            <div class="speaker-glass-row">
-              <div class="speaker-img-glass-frame">
-                <img src="assets/dr_hamad_ali.png" alt="Dr. Hamad Ali" class="speaker-actual-photo">
-              </div>
-              <div class="speaker-meta-text">
-                <h3>Dr. Hamad Ali</h3>
-                <span class="speaker-role-tag">Speaker</span>
-                <span class="speaker-univ-tag">Dept. of Pharmaceutical Sciences • PAF-IAST</span>
-              </div>
+            <div class="instructor-details">
+              <h3 class="instructor-name">Dr. Hamad Ali</h3>
+              <span class="instructor-role-badge">Speaker</span>
+              <span class="instructor-dept">Dept. of Pharmaceutical Sciences • PAF-IAST</span>
             </div>
+          </div>
 
-            <h2 class="event-topic-title">
+          <div class="instructors-joint-badge">
+            <span>&amp;</span>
+          </div>
+
+          <!-- Instructor 2: Dr. Shah Faisal -->
+          <div class="instructor-profile-box">
+            <div class="instructor-avatar-frame">
+              <img src="assets/dr_shah_faisal.jpg" alt="Dr. Shah Faisal" class="instructor-photo">
+            </div>
+            <div class="instructor-details">
+              <h3 class="instructor-name">Dr. Shah Faisal</h3>
+              <span class="instructor-role-badge">Speaker</span>
+              <span class="instructor-dept">Dept. of Pharmaceutical Sciences • PAF-IAST</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Purpose of the Event -->
+        <div class="seminar-purpose-bar">
+          <span class="purpose-label">PURPOSE OF THE EVENT</span>
+          <p class="purpose-text">
+            An interdisciplinary 2-day scientific seminar series exploring the critical challenges of global antimicrobial resistance alongside modern breakthroughs in healthcare artificial intelligence to shape the future of clinical medicine and health research.
+          </p>
+        </div>
+
+        <!-- Lecture Titles by Day (Titles Only) -->
+        <div class="lecture-titles-grid">
+          
+          <!-- Day 1 Title -->
+          <div class="lecture-title-card day1-card">
+            <div class="lecture-day-pill">
+              <span>Day 1 • Wednesday, 4th November • 2:00 PM – 4:00 PM • B2 MPH</span>
+            </div>
+            <h2 class="lecture-main-title">
               The Silent Pandemic: Antimicrobial Resistance and Its Global Health Implications
             </h2>
-
-            <p class="event-topic-desc">
-              Addressing drug-resistant bacterial pathogens, biochemical resistance mechanisms, therapeutic challenges, and clinical counter-measures for securing international healthcare systems.
-            </p>
           </div>
 
-          <div class="event-card-bottom">
-            <div class="event-specs-strip">
-              <span>🧪 Microbiology &amp; Pharmacology</span>
-              <span class="event-fcfs-note">Pass Covers Both Days</span>
+          <!-- Day 2 Title -->
+          <div class="lecture-title-card day2-card">
+            <div class="lecture-day-pill">
+              <span>Day 2 • Thursday, 5th November • 2:00 PM – 4:00 PM • B2 MPH</span>
             </div>
-
-            <button class="glass-btn glass-btn-sky btn-full-width" onclick="openRegisterModal()">
-              <span class="glass-icon-wrapper">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-              </span>
-              <span>Register for 2-Day Seminar (300 PKR)</span>
-            </button>
-          </div>
-        </article>
-
-        <!-- DAY 2: AI IN HEALTHCARE (DR. SHAH FAISAL) -->
-        <article class="glass-event-card card-sem2-edge" id="event-card-2">
-          <div>
-            <div class="card-schedule-pill sched-sem2">
-              <span>Day 2 • Thursday, 5th November • 2:00 to 4:00 PM • B2 MPH</span>
-            </div>
-
-            <div class="speaker-glass-row">
-              <div class="speaker-img-glass-frame">
-                <img src="assets/dr_shah_faisal.jpg" alt="Dr. Shah Faisal" class="speaker-actual-photo">
-              </div>
-              <div class="speaker-meta-text">
-                <h3>Dr. Shah Faisal</h3>
-                <span class="speaker-role-tag" style="color: var(--splash-orange);">Speaker</span>
-                <span class="speaker-univ-tag">Dept. of Pharmaceutical Sciences • PAF-IAST</span>
-              </div>
-            </div>
-
-            <h2 class="event-topic-title">
-              Artificial Intelligence in Healthcare: Opportunities, Challenges, and Smart Medicine
+            <h2 class="lecture-main-title">
+              Artificial Intelligence in Healthcare: Opportunities, Challenges, and the Future of Smart Medicine in Research, Practice, and Business
             </h2>
-
-            <p class="event-topic-desc">
-              Exploring cutting-edge machine learning in clinical diagnostics, algorithmic decision support systems, healthcare enterprise, commercialization, and the future of smart medicine.
-            </p>
           </div>
 
-          <div class="event-card-bottom">
-            <div class="event-specs-strip">
-              <span>🤖 Smart Medicine &amp; Health AI</span>
-              <span class="event-fcfs-note-orange">Pass Covers Both Days</span>
-            </div>
+        </div>
 
-            <button class="glass-btn glass-btn-orange btn-full-width" onclick="openRegisterModal()">
-              <span class="glass-icon-wrapper">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-              </span>
-              <span>Register for 2-Day Seminar (300 PKR)</span>
-            </button>
+        <!-- Bottom Action Bar: Fee & Single Register Button -->
+        <div class="unified-card-footer">
+          <div class="fee-badge-container">
+            <span class="fee-main-text">Entry Fee: <strong>300 PKR</strong></span>
+            <span class="fee-sub-text">Single Pass Valid for Both Days &amp; All Keynotes</span>
           </div>
-        </article>
 
-      </div>
+          <button class="navy-primary-btn register-trigger-btn" onclick="openRegisterModal()">
+            <span>Register for 2-Day Seminar (300 PKR)</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+
+      </article>
     </main>
 
     <!-- COMPACT FOOTER -->
     <footer class="footer-compact">
       <div class="footer-compact-inner">
         <span>&copy; 2026 PAF-IAST Science Society • Pak-Austria Fachhochschule: IAS&amp;T</span>
-        <span>Official Venue: <strong>B2 MPH</strong> • Entry Fee: <strong>300 PKR</strong> (Covers Both Days)</span>
+        <span>Venue: <strong>B2 MPH</strong> • Fee: <strong>300 PKR</strong> (Covers Both Days)</span>
       </div>
     </footer>
 
@@ -193,7 +178,7 @@
       <div class="modal-glass-header">
         <div class="modal-header-titles">
           <h3 id="reg-modal-title">2-Day Seminar Registration</h3>
-          <p>Complete your details and submit 300 PKR payment verification to receive your official pass.</p>
+          <p>Complete your details and submit 300 PKR payment verification.</p>
         </div>
         <button class="modal-close-glass-btn" onclick="closeRegisterModal()" aria-label="Close modal">&times;</button>
       </div>
@@ -215,7 +200,7 @@
             </div>
           </div>
 
-          <!-- Clean Inputs (NO "e.g." text in the bars!) -->
+          <!-- Clean Inputs -->
           <div class="glass-form-group">
             <label for="form-name" class="glass-field-label">Full Name <span class="req">*</span></label>
             <input type="text" id="form-name" required class="clean-glass-input" autocomplete="name">
@@ -266,10 +251,8 @@
             </div>
           </div>
 
-          <button type="submit" class="glass-btn glass-btn-orange" id="btn-submit-reg" style="width: 100%; padding: 13px; margin-top: 6px;">
-            <span class="glass-icon-wrapper">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            </span>
+          <button type="submit" class="navy-primary-btn btn-full-width" id="btn-submit-reg" style="padding: 13px; margin-top: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             <span id="submit-btn-text">Register &amp; Upload Verification (300 PKR)</span>
           </button>
         </form>
@@ -278,117 +261,48 @@
   </div>
 
   <!-- ===================================================================
-       TICKET MODAL: PASS WITH RED KEYNOTE ADMISSION NOTICE
+       REGISTRATION SUCCESS MODAL (GMAIL DELIVERY CONFIRMATION)
        =================================================================== -->
-  <div class="glass-modal-overlay" id="ticket-modal" role="dialog" aria-modal="true" aria-labelledby="ticket-modal-title">
-    <div class="glass-modal-box ticket-modal-box">
+  <div class="glass-modal-overlay" id="success-modal" role="dialog" aria-modal="true" aria-labelledby="success-modal-title">
+    <div class="glass-modal-box success-modal-box">
       <div class="modal-glass-header">
         <div class="modal-header-titles">
-          <h3 id="ticket-modal-title">Official 2-Day Seminar Entry Pass</h3>
+          <h3 id="success-modal-title">Registration Submitted</h3>
         </div>
-        <button class="modal-close-glass-btn" onclick="closeTicketModal()" aria-label="Close modal">&times;</button>
+        <button class="modal-close-glass-btn" onclick="closeSuccessModal()" aria-label="Close modal">&times;</button>
       </div>
 
-      <!-- Simplified Clean Congratulations Header -->
-      <div class="ticket-congrats-minimal">
-        <div class="congrats-check-badge">✓</div>
-        <h2>Congratulations! Your registration has been submitted.</h2>
-        <p>Here is your official 2-day entry pass:</p>
-      </div>
-
-      <!-- RED KEYNOTE ADMISSION WARNING (Prominently displayed) -->
-      <div class="ticket-payment-warning-strip">
-        <div class="warning-badge-tag">🔴 CRITICAL ADMISSION NOTICE</div>
-        <p><strong>Payment Verification Pending:</strong> Only entry passes with <strong>cleared and verified payments (300 PKR)</strong> will be admitted at the B2 MPH gate scanner. Unverified tickets will be flagged and declined.</p>
-      </div>
-
-      <!-- THE VIBRANT PASS -->
-      <div class="vibrant-pass-wrapper">
-        <div class="vibrant-ticket-card ticket-unified-theme" id="active-vibrant-ticket">
-          
-          <!-- Top Header with Both Official Logos -->
-          <div class="ticket-top-brand-strip">
-            <div class="ticket-logos-pair">
-              <img src="assets/university_logo.png" alt="University Logo" class="t-logo-img-glass">
-              <img src="assets/society_logo.png" alt="Society Logo" class="t-logo-img-glass">
-              <div class="t-brand-titles">
-                <span class="t-brand-society">PAF-IAST SCIENCE SOCIETY</span>
-                <span class="t-brand-main">OFFICIAL 2-DAY ENTRY PASS</span>
-              </div>
-            </div>
-            <div class="t-badge-type badge-unified-pill" id="ticket-badge-pill">2-DAY PASS • 300 PKR</div>
-          </div>
-
-          <!-- Split Pass Content -->
-          <div class="ticket-content-split">
-            <!-- Left Info -->
-            <div class="t-info-left">
-              <h3 class="t-topic-title" id="t-pass-topic">2-Day Scientific &amp; Smart Health AI Seminar Series</h3>
-              <div class="t-speaker-highlight" id="t-pass-speaker">Speakers: Dr. Hamad Ali (Nov 4) &amp; Dr. Shah Faisal (Nov 5)</div>
-
-              <div class="t-attendee-data-grid">
-                <div class="t-field-item">
-                  <span class="t-field-lbl">Attendee Name</span>
-                  <span class="t-field-val" id="t-pass-name">Attendee</span>
-                </div>
-                <div class="t-field-item">
-                  <span class="t-field-lbl">University ID</span>
-                  <span class="t-field-val" id="t-pass-univid">ID-001</span>
-                </div>
-                <div class="t-field-item">
-                  <span class="t-field-lbl">Date &amp; Time</span>
-                  <span class="t-field-val" id="t-pass-datetime">Wed 4th &amp; Thu 5th Nov • 2:00 – 4:00 PM</span>
-                </div>
-                <div class="t-field-item">
-                  <span class="t-field-lbl">Venue</span>
-                  <span class="t-field-val">B2 MPH (Multipurpose Hall)</span>
-                </div>
-                <div class="t-field-item">
-                  <span class="t-field-lbl">Payment Status</span>
-                  <span class="t-field-val" id="t-pass-payment" style="color: #F87171; font-weight: 800;">300 PKR (Pending Verification)</span>
-                </div>
-                <div class="t-field-item">
-                  <span class="t-field-lbl">Phone &amp; Gmail</span>
-                  <span class="t-field-val" id="t-pass-contact">+92 • personal</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Perforation Line -->
-            <div class="ticket-perforation-divider">
-              <div class="perf-notch-top"></div>
-              <div class="perf-notch-bottom"></div>
-            </div>
-
-            <!-- Right QR Stub (Guaranteed Full Visibility) -->
-            <div class="ticket-qr-stub">
-              <div class="t-qr-frame">
-                <div class="t-qr-canvas-holder" id="ticket-qr-holder"></div>
-              </div>
-              <div class="t-unique-code-tag" id="t-pass-code">PAFSS-26-001</div>
-              <span class="t-qr-hint">Scan at B2 MPH Entrance</span>
-            </div>
-          </div>
-
+      <div class="success-modal-body">
+        <div class="success-icon-badge">✓</div>
+        <h2 class="success-title">Congratulations!</h2>
+        <p class="success-subtitle">You have successfully registered for the <strong>2-Day Seminar Series</strong>.</p>
+        
+        <div class="success-ref-pill">
+          <span>Registration Reference ID:</span>
+          <strong id="success-ref-id">PAFSS-26-001</strong>
         </div>
-      </div>
 
-      <!-- Action Buttons -->
-      <div class="ticket-actions-row">
-        <button class="glass-btn glass-btn-orange" onclick="downloadTicketPDF()">
-          <span class="glass-icon-wrapper">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          </span>
-          <span>Download PDF Ticket</span>
-        </button>
-        <button class="glass-btn glass-btn-subtle" onclick="printTicketPass()">
-          <span class="glass-icon-wrapper">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-          </span>
-          <span>Print Pass</span>
+        <div class="success-notice-card">
+          <div class="notice-card-header">
+            <span class="notice-mail-icon">✉️</span>
+            <strong>Important Ticket &amp; Admission Notice</strong>
+          </div>
+          <p class="notice-body-text">
+            Our team is currently verifying your 300 PKR payment receipt. Once verified, your official entry pass with your unique admission QR code will be delivered directly to your registered Gmail address:
+          </p>
+          <div class="registered-email-highlight" id="success-email-display">user@gmail.com</div>
+          <p class="notice-body-subtext">
+            <strong>You will receive your ticket in the upcoming days before Tuesday prior to the event.</strong> Please keep checking your Gmail inbox regularly, and be sure to check your Spam / Junk folder as well.
+          </p>
+          <div class="notice-rule-tag">
+            ⚠️ <em>Only verified tickets issued by our administration will be valid for entry at the B2 MPH hall entrance.</em>
+          </div>
+        </div>
+
+        <button class="navy-primary-btn btn-full-width" onclick="closeSuccessModal()" style="margin-top: 14px;">
+          Done &amp; Return to Home
         </button>
       </div>
-
     </div>
   </div>
 
