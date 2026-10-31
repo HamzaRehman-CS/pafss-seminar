@@ -9,8 +9,16 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+// 20MB limit allows high-res phone camera receipts (up to 10MB) to be received seamlessly
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ limit: '20mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Uploads directory for static receipt files
+const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
 
 // Dedicated Admin Route: /admin serves admin.html directly
 app.get('/admin', (req, res) => {
@@ -76,6 +84,35 @@ function writeLocalScanHistory(list) {
   }
 }
 
+// Helper: Save Base64 image to server uploads directory
+function saveReceiptImage(base64Data, attendeeId) {
+  if (!base64Data || typeof base64Data !== 'string') return null;
+
+  try {
+    const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    let extension = 'jpg';
+    let buffer;
+
+    if (matches && matches.length === 3) {
+      const mime = matches[1].toLowerCase();
+      if (mime.includes('png')) extension = 'png';
+      else if (mime.includes('webp')) extension = 'webp';
+      else if (mime.includes('gif')) extension = 'gif';
+      buffer = Buffer.from(matches[2], 'base64');
+    } else {
+      buffer = Buffer.from(base64Data, 'base64');
+    }
+
+    const filename = `receipt_${attendeeId}_${Date.now()}.${extension}`;
+    const filePath = path.join(UPLOADS_DIR, filename);
+    fs.writeFileSync(filePath, buffer);
+    return `/uploads/${filename}`;
+  } catch (err) {
+    console.warn("Could not save receipt image to disk:", err.message);
+    return null;
+  }
+}
+
 // Map PostgreSQL row to client attendee object
 function mapAttendee(row) {
   if (!row) return null;
@@ -86,7 +123,7 @@ function mapAttendee(row) {
     university_id: row.university_id,
     phone: row.phone,
     email: row.email,
-    seminar: row.seminar,
+    seminar: row.seminar || 'unified26',
     seminarTitle: row.seminar_title,
     seminar_title: row.seminar_title,
     speaker: row.speaker,
@@ -104,7 +141,15 @@ function mapAttendee(row) {
     checkedInAt: row.checked_in_at,
     checked_in_at: row.checked_in_at,
     scanCount: Number(row.scan_count || 0),
-    scan_count: Number(row.scan_count || 0)
+    scan_count: Number(row.scan_count || 0),
+    paymentStatus: row.payment_status || 'pending',
+    payment_status: row.payment_status || 'pending',
+    paymentAmount: row.payment_amount || '300 PKR',
+    payment_amount: row.payment_amount || '300 PKR',
+    paymentReceipt: row.payment_receipt || null,
+    payment_receipt: row.payment_receipt || null,
+    paymentVerifiedAt: row.payment_verified_at,
+    payment_verified_at: row.payment_verified_at
   };
 }
 
@@ -128,7 +173,7 @@ function mapScanHistory(row) {
   };
 }
 
-// Ensure database tables exist on startup
+// Ensure database tables exist and have all columns on startup
 async function initDb() {
   try {
     await pool.query(`
@@ -149,7 +194,11 @@ async function initDb() {
         registered_at TIMESTAMPTZ DEFAULT NOW(),
         checked_in BOOLEAN DEFAULT FALSE,
         checked_in_at TIMESTAMPTZ,
-        scan_count INTEGER DEFAULT 0
+        scan_count INTEGER DEFAULT 0,
+        payment_status VARCHAR(64) DEFAULT 'pending',
+        payment_amount VARCHAR(64) DEFAULT '300 PKR',
+        payment_receipt TEXT,
+        payment_verified_at TIMESTAMPTZ
       );
 
       CREATE TABLE IF NOT EXISTS scan_history (
@@ -162,6 +211,11 @@ async function initDb() {
         status VARCHAR(64) NOT NULL,
         message TEXT
       );
+
+      ALTER TABLE attendees ADD COLUMN IF NOT EXISTS payment_status VARCHAR(64) DEFAULT 'pending';
+      ALTER TABLE attendees ADD COLUMN IF NOT EXISTS payment_amount VARCHAR(64) DEFAULT '300 PKR';
+      ALTER TABLE attendees ADD COLUMN IF NOT EXISTS payment_receipt TEXT;
+      ALTER TABLE attendees ADD COLUMN IF NOT EXISTS payment_verified_at TIMESTAMPTZ;
     `);
     console.log('✅ Neon Cloud Database connected and tables verified.');
   } catch (err) {
@@ -174,44 +228,47 @@ initDb();
 // API ROUTES
 // ==========================================
 
-// 1. Get Live Statistics
+// 1. Get Live Statistics (Total, Verified, Pending, Admitted, Revenue)
 app.get('/api/stats', async (req, res) => {
   try {
-    const sem1Res = await pool.query("SELECT COUNT(*) FROM attendees WHERE seminar = 'seminar1'");
-    const sem2Res = await pool.query("SELECT COUNT(*) FROM attendees WHERE seminar = 'seminar2'");
-    const checkedRes = await pool.query("SELECT COUNT(*) FROM attendees WHERE checked_in = true");
     const totalRes = await pool.query("SELECT COUNT(*) FROM attendees");
+    const verifiedRes = await pool.query("SELECT COUNT(*) FROM attendees WHERE payment_status = 'verified'");
+    const pendingRes = await pool.query("SELECT COUNT(*) FROM attendees WHERE payment_status != 'verified'");
+    const checkedRes = await pool.query("SELECT COUNT(*) FROM attendees WHERE checked_in = true");
 
-    const sem1Count = parseInt(sem1Res.rows[0].count, 10);
-    const sem2Count = parseInt(sem2Res.rows[0].count, 10);
-    const checkedCount = parseInt(checkedRes.rows[0].count, 10);
     const totalCount = parseInt(totalRes.rows[0].count, 10);
+    const verifiedCount = parseInt(verifiedRes.rows[0].count, 10);
+    const pendingCount = parseInt(pendingRes.rows[0].count, 10);
+    const checkedCount = parseInt(checkedRes.rows[0].count, 10);
+    const totalRevenue = verifiedCount * 300;
 
     return res.json({
-      seminar1: { registered: sem1Count },
-      seminar2: { registered: sem2Count },
       totalAttendees: totalCount,
-      checkedInCount: checkedCount
+      verifiedCount,
+      pendingCount,
+      checkedInCount: checkedCount,
+      totalRevenue: `${totalRevenue.toLocaleString()} PKR`
     });
   } catch (e) {
     console.warn("DB stats error, falling back to local cache:", e.message);
     const attendees = readLocalAttendees();
-    let sem1 = 0, sem2 = 0, checked = 0;
+    let verified = 0, pending = 0, checked = 0;
     for (const a of attendees) {
-      if (a.seminar === 'seminar1') sem1++;
-      if (a.seminar === 'seminar2') sem2++;
+      if (a.paymentStatus === 'verified' || a.payment_status === 'verified') verified++;
+      else pending++;
       if (a.checkedIn || a.checked_in) checked++;
     }
     return res.json({
-      seminar1: { registered: sem1 },
-      seminar2: { registered: sem2 },
       totalAttendees: attendees.length,
-      checkedInCount: checked
+      verifiedCount: verified,
+      pendingCount: pending,
+      checkedInCount: checked,
+      totalRevenue: `${(verified * 300).toLocaleString()} PKR`
     });
   }
 });
 
-// 2. Get All Attendees (For Admin Directory & Local Offline Cache)
+// 2. Get All Attendees (For Admin Directory)
 app.get('/api/attendees', async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM attendees ORDER BY registered_at ASC");
@@ -224,62 +281,57 @@ app.get('/api/attendees', async (req, res) => {
   }
 });
 
-// 3. Register New Attendee (Clean input, saved globally to Neon DB)
+// 3. Register New Attendee (Unified 2-Day Seminar Pass with 300 PKR Fee & Receipt Upload)
 app.post('/api/register', async (req, res) => {
-  const { name, universityId, phone, email, seminar } = req.body;
+  const { name, universityId, phone, email, paymentReceipt } = req.body;
 
-  if (!name || !universityId || !email || !seminar) {
-    return res.status(400).json({ error: "Name, University ID, Personal Gmail, and Seminar are required." });
+  if (!name || !universityId || !email) {
+    return res.status(400).json({ error: "Name, University ID, and Personal Gmail are required." });
   }
 
   const cleanName = name.trim();
   const cleanUnivId = universityId.trim().toUpperCase();
   const cleanPhone = phone ? phone.trim() : "N/A";
   const cleanEmail = email.trim().toLowerCase();
-  const targetSeminar = (seminar === 'seminar2') ? 'seminar2' : 'seminar1';
 
   try {
-    // Count existing attendees for the selected seminar to generate sequential ID
-    const countRes = await pool.query(
-      "SELECT COUNT(*) FROM attendees WHERE seminar = $1",
-      [targetSeminar]
-    );
+    // Count existing attendees to generate sequential ID
+    const countRes = await pool.query("SELECT COUNT(*) FROM attendees");
     const nextSeq = parseInt(countRes.rows[0].count, 10) + 1;
 
-    let id = "";
-    let seatNumber = "";
-    let seminarTitle = "";
-    let speaker = "";
-    let date = "";
+    const id = `PAFSS-26-${String(nextSeq).padStart(3, '0')}`;
+    const seatNumber = `B2-${String(nextSeq).padStart(3, '0')}`;
+    const seminar = "unified26";
+    const seminarTitle = "The Frontiers of Medicine & Artificial Intelligence: AMR & Smart Healthcare";
+    const speaker = "Dr. Hamad Ali (AMR) & Dr. Shah Faisal (AI Health)";
+    const date = "Wed 4th & Thu 5th November 2026";
+    const time = "2:00 PM – 4:00 PM (Both Days)";
+    const venue = "B2 MPH (Multipurpose Hall)";
 
-    if (targetSeminar === 'seminar1') {
-      id = `AMR-26-${String(nextSeq).padStart(3, '0')}`;
-      seatNumber = `AMR-${String(nextSeq).padStart(2, '0')}`;
-      seminarTitle = "The Silent Pandemic: Antimicrobial Resistance and Its Global Health Implications";
-      speaker = "Dr. Hamad Ali";
-      date = "Wednesday, 4th November";
-    } else {
-      id = `AIH-26-${String(nextSeq).padStart(3, '0')}`;
-      seatNumber = `AIH-${String(nextSeq).padStart(2, '0')}`;
-      seminarTitle = "Artificial Intelligence in Healthcare: Opportunities, Challenges, and the Future of Smart Medicine in Research, Practice, and Business";
-      speaker = "Dr. Shah Faisal";
-      date = "Thursday, 5th November";
+    // Save image to server uploads directory if base64 data provided
+    let staticFileUrl = null;
+    if (paymentReceipt && typeof paymentReceipt === 'string' && paymentReceipt.startsWith('data:image')) {
+      staticFileUrl = saveReceiptImage(paymentReceipt, id);
     }
+    // Store either static URL or data URL in database
+    const storedReceipt = staticFileUrl || paymentReceipt || null;
 
     const insertRes = await pool.query(
       `INSERT INTO attendees (
         id, name, university_id, phone, email, seminar, 
         seminar_title, speaker, date, time, venue, 
-        seat_number, ticket_hash, registered_at, checked_in, scan_count
+        seat_number, ticket_hash, registered_at, checked_in, scan_count,
+        payment_status, payment_amount, payment_receipt
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10, $11,
-        $12, $13, NOW(), false, 0
+        $12, $13, NOW(), false, 0,
+        'pending', '300 PKR', $14
       ) RETURNING *`,
       [
-        id, cleanName, cleanUnivId, cleanPhone, cleanEmail, targetSeminar,
-        seminarTitle, speaker, date, "2:00 PM – 4:00 PM", "B2 MPH",
-        seatNumber, id
+        id, cleanName, cleanUnivId, cleanPhone, cleanEmail, seminar,
+        seminarTitle, speaker, date, time, venue,
+        seatNumber, id, storedReceipt
       ]
     );
 
@@ -292,7 +344,7 @@ app.post('/api/register', async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Registration confirmed successfully!",
+      message: "Registration confirmed successfully! Payment is pending organizer verification.",
       attendee: attendeeObj
     });
 
@@ -302,7 +354,90 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// 4. Admin Login (Credentials: ID: pafss26, Pass: seminar)
+// 4. Admin Verify / Reject Payment (1-Click Action in Admin Portal)
+app.post('/api/attendees/:id/verify-payment', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // 'verified' | 'rejected' | 'pending'
+  const newStatus = (status === 'rejected') ? 'rejected' : (status === 'pending' ? 'pending' : 'verified');
+
+  try {
+    const updateRes = await pool.query(
+      `UPDATE attendees 
+       SET payment_status = $1, payment_verified_at = NOW() 
+       WHERE UPPER(id) = UPPER($2) 
+       RETURNING *`,
+      [newStatus, id]
+    );
+
+    if (updateRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Attendee not found." });
+    }
+
+    const updatedAttendee = mapAttendee(updateRes.rows[0]);
+
+    // Sync local cache
+    const localList = readLocalAttendees();
+    const idx = localList.findIndex(a => a.id.toUpperCase() === id.toUpperCase());
+    if (idx !== -1) {
+      localList[idx] = updatedAttendee;
+      writeLocalAttendees(localList);
+    }
+
+    return res.json({
+      success: true,
+      message: `Payment status updated to ${newStatus}.`,
+      attendee: updatedAttendee
+    });
+  } catch (err) {
+    console.error("Payment verification error:", err);
+    return res.status(500).json({ success: false, message: "Error updating payment status." });
+  }
+});
+
+// 5. Delete Single Candidate (Permanent Neon DB + Cache Sync)
+app.delete('/api/attendees/:id', async (req, res) => {
+  const { id } = req.params;
+  const cleanId = String(id).trim().toUpperCase();
+
+  try {
+    await pool.query("DELETE FROM scan_history WHERE UPPER(ticket_id) = $1", [cleanId]);
+    await pool.query("DELETE FROM attendees WHERE UPPER(id) = $1", [cleanId]);
+
+    // Update local cache
+    let localList = readLocalAttendees();
+    localList = localList.filter(a => a.id.toUpperCase() !== cleanId);
+    writeLocalAttendees(localList);
+
+    return res.json({
+      success: true,
+      message: `Candidate ${cleanId} deleted permanently from database.`
+    });
+  } catch (err) {
+    console.error("Delete candidate error:", err);
+    return res.status(500).json({ success: false, message: "Error deleting candidate." });
+  }
+});
+
+// 6. Delete All Candidates (Permanent Neon DB + Cache Sync)
+app.delete('/api/attendees', async (req, res) => {
+  try {
+    await pool.query("DELETE FROM scan_history");
+    await pool.query("DELETE FROM attendees");
+
+    writeLocalAttendees([]);
+    writeLocalScanHistory([]);
+
+    return res.json({
+      success: true,
+      message: "All candidates and scan records have been permanently cleared from database."
+    });
+  } catch (err) {
+    console.error("Delete all candidates error:", err);
+    return res.status(500).json({ success: false, message: "Error deleting all candidates." });
+  }
+});
+
+// 7. Admin Login (Credentials: ID: pafss26, Pass: seminar)
 app.post('/api/admin/login', (req, res) => {
   const { id, password } = req.body;
   if (!id || !password) {
@@ -322,20 +457,20 @@ app.post('/api/admin/login', (req, res) => {
 
   return res.status(401).json({
     success: false,
-    message: "Invalid credentials. (ID: pafss26, Pass: seminar)"
+    message: "Invalid credentials. Please verify ID and Password."
   });
 });
 
-// 5. QR Gate Scanner & Verification (Neon DB Powered + Strict Participant Verification)
+// 8. QR Gate Scanner & Verification (With Payment Status Gate)
 app.post('/api/scan', async (req, res) => {
   const { ticketId } = req.body;
   if (!ticketId) {
     return res.status(400).json({ success: false, status: 'INVALID', message: "Ticket ID is required" });
   }
 
-  // Extract pure ticket ID if URL was scanned
+  // Extract pure ticket ID if URL or string was scanned
   let cleanTicket = String(ticketId).trim();
-  const urlMatch = cleanTicket.match(/(AMR-26-\d+|AIH-26-\d+)/i);
+  const urlMatch = cleanTicket.match(/(PAFSS-26-\d+|AMR-26-\d+|AIH-26-\d+)/i);
   if (urlMatch) {
     cleanTicket = urlMatch[1];
   }
@@ -343,7 +478,6 @@ app.post('/api/scan', async (req, res) => {
 
   try {
     // Search attendee in Neon Database ONLY by ticket id or ticket_hash
-    // (Strictly excludes university IDs or arbitrary keywords)
     const findRes = await pool.query(
       `SELECT * FROM attendees 
        WHERE UPPER(id) = $1 
@@ -393,7 +527,48 @@ app.post('/api/scan', async (req, res) => {
     const isAlreadyChecked = Boolean(attendeeRow.checked_in);
     const scanId = `SCAN-${Date.now()}`;
 
-    // Case A: ALREADY SCANNED ONCE (Duplicate alert with person's name)
+    // STEP A: PAYMENT VERIFICATION CHECK
+    const paymentStatus = attendeeRow.payment_status || 'pending';
+    if (paymentStatus !== 'verified') {
+      const unverifiedMsg = `⚠️ PAYMENT UNVERIFIED! ${attendeeRow.name} has not cleared the 300 PKR registration fee. Please verify payment in the Admin Portal before admission.`;
+
+      try {
+        await pool.query(
+          `INSERT INTO scan_history (scan_id, scanned_at, ticket_id, attendee_name, university_id, seminar, status, message)
+           VALUES ($1, NOW(), $2, $3, $4, $5, 'PAYMENT_PENDING', $6)`,
+          [scanId, attendeeRow.id, attendeeRow.name, attendeeRow.university_id, attendeeRow.speaker, unverifiedMsg]
+        );
+      } catch (e) {
+        console.warn("Scan history insert error:", e.message);
+      }
+
+      const pendingLog = {
+        scanId,
+        scanned_at: new Date().toISOString(),
+        timestamp: new Date().toISOString(),
+        ticketId: attendeeRow.id,
+        attendeeName: attendeeRow.name,
+        universityId: attendeeRow.university_id,
+        seminar: attendeeRow.speaker,
+        status: "PAYMENT_PENDING",
+        message: unverifiedMsg
+      };
+
+      const localLogs = readLocalScanHistory();
+      localLogs.unshift(pendingLog);
+      writeLocalScanHistory(localLogs.slice(0, 150));
+
+      return res.json({
+        success: true,
+        status: "PAYMENT_PENDING",
+        isPaymentPending: true,
+        message: unverifiedMsg,
+        attendee: mapAttendee(attendeeRow),
+        scanLog: pendingLog
+      });
+    }
+
+    // STEP B: ALREADY SCANNED ONCE (Duplicate alert with person's name)
     if (isAlreadyChecked) {
       const newScanCount = Number(attendeeRow.scan_count || 1) + 1;
       await pool.query(
@@ -447,7 +622,7 @@ app.post('/api/scan', async (req, res) => {
       });
     }
 
-    // Case B: FIRST TIME SCAN -> Verified & Admitted in Green Color with Person's Name
+    // STEP C: FIRST TIME SCAN & PAYMENT VERIFIED -> Verified & Admitted in Green Color
     const updateRes = await pool.query(
       `UPDATE attendees 
        SET checked_in = true, checked_in_at = NOW(), scan_count = 1 
@@ -457,7 +632,7 @@ app.post('/api/scan', async (req, res) => {
     );
 
     const verifiedObj = mapAttendee(updateRes.rows[0]);
-    const succMessage = `Admitted: ${verifiedObj.name} has been scanned and recorded in the attendance list.`;
+    const succMessage = `Admitted: ${verifiedObj.name} has been scanned and recorded in the attendance list (300 PKR Verified).`;
 
     try {
       await pool.query(
@@ -497,7 +672,7 @@ app.post('/api/scan', async (req, res) => {
       success: true,
       status: "FIRST_CHECKIN",
       isDuplicate: false,
-      message: `✅ Admitted: ${verifiedObj.name}`,
+      message: `✅ Admitted: ${verifiedObj.name} (300 PKR Verified)`,
       attendee: verifiedObj,
       scanLog: successLog
     });
@@ -508,7 +683,7 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// 6. Live Scanned History Log (From Neon DB)
+// 9. Live Scanned History Log (From Neon DB)
 app.get('/api/scan-history', async (req, res) => {
   try {
     const result = await pool.query(
@@ -522,7 +697,24 @@ app.get('/api/scan-history', async (req, res) => {
   }
 });
 
-// 7. Clear Live Scanned History Log
+// 10. Delete Single Scan Log Item
+app.delete('/api/scan-history/:scanId', async (req, res) => {
+  const { scanId } = req.params;
+  try {
+    await pool.query("DELETE FROM scan_history WHERE scan_id = $1", [scanId]);
+
+    let localLogs = readLocalScanHistory();
+    localLogs = localLogs.filter(l => l.scanId !== scanId && l.scan_id !== scanId);
+    writeLocalScanHistory(localLogs);
+
+    return res.json({ success: true, message: "Scan entry deleted successfully." });
+  } catch (err) {
+    console.error("Delete scan log error:", err);
+    return res.status(500).json({ success: false, message: "Error deleting scan log." });
+  }
+});
+
+// 11. Clear All Live Scanned History
 app.post('/api/scan-history/clear', async (req, res) => {
   try {
     await pool.query("DELETE FROM scan_history");

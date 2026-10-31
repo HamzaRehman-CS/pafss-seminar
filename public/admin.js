@@ -1,7 +1,12 @@
 /**
- * PAF-IAST SCIENCE FESTA 2026 - STANDALONE ADMIN GATE PORTAL
+ * PAF-IAST SCIENCE FESTA 2026 - ORGANIZER & GATE ADMIN PORTAL
  * Credentials: ID: pafss26 | Pass: seminar
- * Features: Neon DB Integration, Real-Time QR Gate Scanning, Instant Cache Validation, Scanned History Log
+ * Features:
+ *  - Unified 2-Day Seminar Candidate Management
+ *  - 300 PKR Payment Verification with High-Res Receipt Lightbox
+ *  - One-click Payment Approval & Rejection
+ *  - Complete Permanent Candidate & Scan History Deletion with 100% Neon DB Sync
+ *  - Real-Time Gate QR Scanner with Payment Check
  */
 
 // Application State
@@ -11,6 +16,7 @@ let localScanHistory = [];
 let html5Scanner = null;
 let isScannerRunning = false;
 let currentFilter = 'all';
+let currentActiveReceiptAttendee = null;
 
 // Synthesized Audio Feedback
 let audioCtx = null;
@@ -146,6 +152,31 @@ function adminSignOut() {
 }
 
 // ===================================================================
+// TAB SWITCHING (ORGANIZED & RESPONSIVE)
+// ===================================================================
+function switchAdminTab(tabName) {
+  const btnDir = document.getElementById('tab-btn-directory');
+  const btnScan = document.getElementById('tab-btn-scanner');
+  const paneDir = document.getElementById('tab-pane-directory');
+  const paneScan = document.getElementById('tab-pane-scanner');
+
+  if (tabName === 'directory') {
+    btnDir.classList.add('active');
+    btnScan.classList.remove('active');
+    paneDir.style.display = 'block';
+    paneScan.style.display = 'none';
+    if (html5Scanner && isScannerRunning) {
+      stopCameraScanner();
+    }
+  } else {
+    btnScan.classList.add('active');
+    btnDir.classList.remove('active');
+    paneScan.style.display = 'block';
+    paneDir.style.display = 'none';
+  }
+}
+
+// ===================================================================
 // DATA FETCHING & DIRECTORY
 // ===================================================================
 async function fetchDashboardData() {
@@ -170,15 +201,17 @@ async function fetchDashboardData() {
 }
 
 function updateStatsUI(stats) {
-  const s1 = document.getElementById('dash-sem1-count');
-  const s2 = document.getElementById('dash-sem2-count');
-  const sChecked = document.getElementById('dash-checked-count');
   const sTotal = document.getElementById('dash-total-count');
+  const sVerified = document.getElementById('dash-verified-count');
+  const sRevenue = document.getElementById('dash-revenue-text');
+  const sPending = document.getElementById('dash-pending-count');
+  const sChecked = document.getElementById('dash-checked-count');
 
-  if (s1) s1.innerText = stats.seminar1 ? stats.seminar1.registered : 0;
-  if (s2) s2.innerText = stats.seminar2 ? stats.seminar2.registered : 0;
-  if (sChecked) sChecked.innerText = stats.checkedInCount || 0;
   if (sTotal) sTotal.innerText = stats.totalAttendees || 0;
+  if (sVerified) sVerified.innerText = stats.verifiedCount || 0;
+  if (sRevenue) sRevenue.innerText = `Revenue: ${stats.totalRevenue || '0 PKR'}`;
+  if (sPending) sPending.innerText = stats.pendingCount || 0;
+  if (sChecked) sChecked.innerText = stats.checkedInCount || 0;
 }
 
 function setFilter(filter, btn) {
@@ -192,9 +225,11 @@ function handleDirectorySearch() {
   const query = document.getElementById('dir-search-input').value.trim().toLowerCase();
 
   const filtered = localAttendeeCache.filter(a => {
-    if (currentFilter === 'seminar1' && a.seminar !== 'seminar1') return false;
-    if (currentFilter === 'seminar2' && a.seminar !== 'seminar2') return false;
-    if (currentFilter === 'checked' && !a.checkedIn) return false;
+    const isVerified = (a.paymentStatus === 'verified' || a.payment_status === 'verified');
+    
+    if (currentFilter === 'verified' && !isVerified) return false;
+    if (currentFilter === 'pending' && isVerified) return false;
+    if (currentFilter === 'admitted' && !a.checkedIn) return false;
 
     if (query) {
       const matchName = (a.name || '').toLowerCase().includes(query);
@@ -215,15 +250,55 @@ function renderDirectoryTable(attendees) {
   if (!tbody) return;
 
   if (!attendees || attendees.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">No attendees registered yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">No candidate records found.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = attendees.map(a => {
-    const semName = a.seminar === 'seminar1'
-      ? '<span style="color:#0284C7; font-weight:700;">AMR (Nov 4)</span>'
-      : '<span style="color:#F97316; font-weight:700;">AI Health (Nov 5)</span>';
+    const isVerified = (a.paymentStatus === 'verified' || a.payment_status === 'verified');
+    const isRejected = (a.paymentStatus === 'rejected' || a.payment_status === 'rejected');
 
+    // Payment Proof Thumbnail
+    let proofHtml = `<span style="color: var(--text-muted); font-size: 0.76rem;">No file</span>`;
+    if (a.paymentReceipt || a.payment_receipt) {
+      const imgUrl = a.paymentReceipt || a.payment_receipt;
+      proofHtml = `
+        <div class="receipt-thumb-wrap" onclick="viewReceiptImage('${a.id}')" title="Click to inspect receipt">
+          <img src="${imgUrl}" class="admin-receipt-thumb" alt="Payment Proof">
+          <span class="zoom-icon-chip">🔍 Zoom</span>
+        </div>
+      `;
+    }
+
+    // Payment Status Badge & One-Click Actions
+    let payHtml = '';
+    if (isVerified) {
+      payHtml = `
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="badge-status-verified">✅ Verified</span>
+          <button class="btn-micro-action" onclick="verifyCandidatePayment('${a.id}', 'pending')" title="Revert to pending">Revert</button>
+        </div>
+      `;
+    } else if (isRejected) {
+      payHtml = `
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="badge-status-rejected">❌ Rejected</span>
+          <button class="btn-micro-action btn-green" onclick="verifyCandidatePayment('${a.id}', 'verified')" title="Approve payment">Approve</button>
+        </div>
+      `;
+    } else {
+      payHtml = `
+        <div>
+          <span class="badge-status-pending">⏳ Pending (300 PKR)</span>
+          <div style="display: flex; gap: 4px; margin-top: 4px;">
+            <button class="btn-micro-action btn-green" onclick="verifyCandidatePayment('${a.id}', 'verified')">Approve</button>
+            <button class="btn-micro-action btn-red" onclick="verifyCandidatePayment('${a.id}', 'rejected')">Reject</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Gate Status Badge
     const gateBadge = a.checkedIn
       ? `<span class="h-badge-tag tag-first">Admitted (${new Date(a.checkedInAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})</span>`
       : `<span class="h-badge-tag" style="background:#F1F5F9; color:#64748B;">Not Checked In</span>`;
@@ -233,15 +308,155 @@ function renderDirectoryTable(attendees) {
     return `
       <tr>
         <td><code>${a.id}</code></td>
-        <td><strong>${a.name}</strong></td>
-        <td>${univid}</td>
-        <td>${a.phone}</td>
-        <td>${a.email}</td>
-        <td>${semName}</td>
+        <td>
+          <strong style="color: var(--text-main); font-size: 0.92rem;">${a.name}</strong>
+        </td>
+        <td><span class="univ-id-chip">${univid}</span></td>
+        <td>
+          <div style="font-size: 0.8rem;">${a.phone}</div>
+          <div style="font-size: 0.74rem; color: var(--text-muted);">${a.email}</div>
+        </td>
+        <td>${proofHtml}</td>
+        <td>${payHtml}</td>
         <td>${gateBadge}</td>
+        <td>
+          <button class="btn-delete-row" onclick="deleteSingleCandidate('${a.id}', '${a.name.replace(/'/g, "\\'")}')" title="Delete Candidate">
+            🗑️ Delete
+          </button>
+        </td>
       </tr>
     `;
   }).join('');
+}
+
+// Verify or Reject Payment via API
+async function verifyCandidatePayment(id, status) {
+  try {
+    const res = await fetch(`/api/attendees/${id}/verify-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Could not update payment status');
+    }
+
+    // Update local cache
+    const idx = localAttendeeCache.findIndex(a => a.id.toUpperCase() === id.toUpperCase());
+    if (idx !== -1) {
+      localAttendeeCache[idx] = data.attendee;
+    }
+
+    renderDirectoryTable(localAttendeeCache);
+    fetchDashboardData();
+
+    // If receipt lightbox is open, refresh it
+    if (currentActiveReceiptAttendee && currentActiveReceiptAttendee.id === id) {
+      closeReceiptModal();
+    }
+
+  } catch (err) {
+    alert(err.message || "Error updating payment status.");
+  }
+}
+
+// Lightbox Modal: View full resolution receipt
+function viewReceiptImage(attendeeId) {
+  const attendee = localAttendeeCache.find(a => a.id.toUpperCase() === attendeeId.toUpperCase());
+  if (!attendee) return;
+
+  currentActiveReceiptAttendee = attendee;
+  const modal = document.getElementById('receipt-modal');
+  const img = document.getElementById('receipt-modal-img');
+  const meta = document.getElementById('receipt-meta-bar');
+  const actions = document.getElementById('receipt-actions-row');
+
+  const receiptSrc = attendee.paymentReceipt || attendee.payment_receipt;
+  if (!receiptSrc) {
+    alert("No receipt image available for this candidate.");
+    return;
+  }
+
+  img.src = receiptSrc;
+  const isVerified = (attendee.paymentStatus === 'verified' || attendee.payment_status === 'verified');
+
+  meta.innerHTML = `
+    <div><strong>Candidate:</strong> ${attendee.name} (${attendee.universityId || attendee.university_id})</div>
+    <div><strong>Ticket ID:</strong> <code>${attendee.id}</code> • <strong>Phone:</strong> ${attendee.phone}</div>
+    <div><strong>Fee:</strong> 300 PKR • <strong>Current Status:</strong> <span style="font-weight: 800; color:${isVerified ? '#059669':'#D97706'}">${isVerified ? 'VERIFIED' : 'PENDING'}</span></div>
+  `;
+
+  actions.innerHTML = `
+    <button class="glass-btn glass-btn-sky" onclick="verifyCandidatePayment('${attendee.id}', 'verified')" style="padding: 8px 18px;">
+      ✅ Approve Payment (300 PKR)
+    </button>
+    <button class="glass-btn glass-btn-danger" onclick="verifyCandidatePayment('${attendee.id}', 'rejected')" style="padding: 8px 18px;">
+      ❌ Reject Payment
+    </button>
+    <button class="glass-btn glass-btn-subtle" onclick="closeReceiptModal()" style="padding: 8px 18px;">
+      Close
+    </button>
+  `;
+
+  modal.classList.add('open');
+}
+
+function closeReceiptModal() {
+  const modal = document.getElementById('receipt-modal');
+  if (modal) modal.classList.remove('open');
+  currentActiveReceiptAttendee = null;
+}
+
+// Delete Single Candidate
+async function deleteSingleCandidate(id, name) {
+  if (!confirm(`Are you sure you want to permanently delete candidate "${name}" (${id}) from the database?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/attendees/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Error deleting candidate');
+
+    // Immediately remove from local cache and DOM
+    localAttendeeCache = localAttendeeCache.filter(a => a.id.toUpperCase() !== id.toUpperCase());
+    renderDirectoryTable(localAttendeeCache);
+    fetchDashboardData();
+    loadScanHistory();
+
+  } catch (err) {
+    alert(err.message || 'Could not delete candidate');
+  }
+}
+
+// Delete All Candidates (Double Confirmation)
+async function confirmDeleteAllCandidates() {
+  if (!confirm("⚠️ DANGER: Are you sure you want to delete ALL registered candidates from the database? This cannot be undone.")) {
+    return;
+  }
+
+  const promptResp = prompt('To confirm permanent deletion of ALL candidates, please type "DELETE" below:');
+  if (promptResp !== 'DELETE') {
+    alert("Deletion cancelled. Database was not modified.");
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/attendees', { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Error deleting all candidates');
+
+    localAttendeeCache = [];
+    renderDirectoryTable([]);
+    fetchDashboardData();
+    loadScanHistory();
+    alert("All candidate records have been permanently cleared from database.");
+
+  } catch (err) {
+    alert(err.message || 'Could not clear candidates');
+  }
 }
 
 // Export CSV
@@ -251,14 +466,16 @@ function exportDirectoryCSV() {
     return;
   }
 
-  const headers = ["Ticket ID", "Name", "University ID", "Phone", "Personal Gmail", "Event", "Checked In", "Checked In Time"];
+  const headers = ["Ticket ID", "Name", "University ID", "Phone", "Personal Gmail", "Event", "Fee", "Payment Status", "Checked In", "Checked In Time"];
   const rows = localAttendeeCache.map(a => [
     `"${a.id}"`,
     `"${a.name.replace(/"/g, '""')}"`,
     `"${a.universityId || a.university_id || ''}"`,
     `"${a.phone}"`,
     `"${a.email}"`,
-    `"${a.seminar === 'seminar1' ? 'Antimicrobial Resistance (Dr. Hamad Ali)' : 'AI in Healthcare (Dr. Shah Faisal)'}"`,
+    `"2-Day Seminar Series (Dr. Hamad Ali & Dr. Shah Faisal)"`,
+    `"300 PKR"`,
+    `"${a.paymentStatus || a.payment_status || 'pending'}"`,
     a.checkedIn ? "YES" : "NO",
     `"${a.checkedInAt || ''}"`
   ]);
@@ -268,14 +485,14 @@ function exportDirectoryCSV() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.setAttribute("href", url);
-  link.setAttribute("download", `PAFSS_Attendees_${new Date().toISOString().slice(0, 10)}.csv`);
+  link.setAttribute("download", `PAFSS_Candidates_${new Date().toISOString().slice(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
 }
 
 // ===================================================================
-// QR CODE SCANNER (WITH OFFLINE / INSTANT LOCAL CACHE VALIDATION)
+// QR CODE SCANNER (WITH PAYMENT STATUS GATE CHECK)
 // ===================================================================
 function toggleCameraScanner() {
   if (isScannerRunning) {
@@ -376,22 +593,35 @@ async function processTicketScan(ticketCode) {
   lastScannedTimestamp = now;
 
   let clean = String(ticketCode || '').trim();
-  const urlMatch = clean.match(/(AMR-26-\d+|AIH-26-\d+)/i);
+  const urlMatch = clean.match(/(PAFSS-26-\d+|AMR-26-\d+|AIH-26-\d+)/i);
   if (urlMatch) {
     clean = urlMatch[1];
   }
   const cleanUpper = clean.toUpperCase();
 
   // 1. Instant check in local cache ONLY by ticket ID or ticketHash
-  // (Strictly excludes university IDs or arbitrary text)
   const localMatch = localAttendeeCache.find(a => 
     (a.id && a.id.toUpperCase() === cleanUpper) ||
     (a.ticketHash && a.ticketHash.toUpperCase() === cleanUpper)
   );
 
   if (localMatch) {
+    const isVerified = (localMatch.paymentStatus === 'verified' || localMatch.payment_status === 'verified');
+    
+    // Check payment verification
+    if (!isVerified) {
+      playSound('warning');
+      renderPreviewResult({
+        status: 'PAYMENT_PENDING',
+        attendee: localMatch,
+        message: `⚠️ PAYMENT UNVERIFIED! ${localMatch.name} has not cleared 300 PKR fee. Please verify in Admin.`
+      });
+      syncScanToServer(cleanUpper);
+      return;
+    }
+
     if (localMatch.checkedIn) {
-      // ALREADY SCANNED ONCE (Warning / Amber alert with person's name)
+      // ALREADY SCANNED ONCE (Duplicate alert with person's name)
       playSound('warning');
       const timeStr = localMatch.checkedInAt 
         ? new Date(localMatch.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
@@ -420,17 +650,16 @@ async function processTicketScan(ticketCode) {
       renderPreviewResult({
         status: 'FIRST_CHECKIN',
         attendee: localMatch,
-        message: `✅ Admitted: ${localMatch.name}`
+        message: `✅ Admitted: ${localMatch.name} (300 PKR Verified)`
       });
 
-      // Update directory table instantly
       renderDirectoryTable(localAttendeeCache);
       syncScanToServer(cleanUpper);
       return;
     }
   }
 
-  // 2. If not matched in local cache, query server endpoint
+  // 2. Query server endpoint
   try {
     const res = await fetch('/api/scan', {
       method: 'POST',
@@ -448,7 +677,7 @@ async function processTicketScan(ticketCode) {
     } else {
       if (result.status === 'FIRST_CHECKIN') {
         playSound('success');
-      } else if (result.status === 'ALREADY_SCANNED') {
+      } else if (result.status === 'ALREADY_SCANNED' || result.status === 'PAYMENT_PENDING') {
         playSound('warning');
       }
       renderPreviewResult(result);
@@ -494,7 +723,7 @@ function renderPreviewResult(result) {
   previewCard.className = 'scan-result-card';
 
   if (result.status === 'FIRST_CHECKIN') {
-    // 1. GREEN COLOR: Name, checkmark, admission recorded
+    // GREEN: Name, checkmark, admission recorded
     previewCard.classList.add('scan-first-time');
     const a = result.attendee || {};
     const univid = a.universityId || a.university_id || 'N/A';
@@ -502,22 +731,42 @@ function renderPreviewResult(result) {
 
     banner.innerHTML = `
       <span style="font-size: 1.4rem;">✅</span>
-      <span>Admitted: ${attendeeName}</span>
+      <span>Admitted: ${attendeeName} (300 PKR Verified)</span>
     `;
 
     details.innerHTML = `
       <div style="font-size: 0.95rem; font-weight: 800; color: #047857; margin-bottom: 6px;">
-        ${attendeeName} has just been scanned and recorded in the attendance list.
+        ${attendeeName} has been verified and admitted for the 2-Day Seminar Series.
       </div>
-      <div><strong>Participant Name:</strong> ${attendeeName}</div>
-      <div><strong>University ID:</strong> ${univid}</div>
-      <div><strong>Seminar:</strong> ${a.speaker || (a.seminar === 'seminar1' ? 'Dr. Hamad Ali (AMR)' : 'Dr. Shah Faisal (AI Health)')} • B2 MPH</div>
+      <div><strong>Candidate:</strong> ${attendeeName} • <strong>Univ ID:</strong> ${univid}</div>
+      <div><strong>Venue:</strong> B2 MPH (Multipurpose Hall)</div>
+      <div><strong>Ticket ID:</strong> <code>${a.id}</code> • <strong>Fee:</strong> 300 PKR Paid</div>
+      <div><strong>Check-In Time:</strong> ${new Date(a.checkedInAt || Date.now()).toLocaleTimeString()}</div>
+    `;
+
+  } else if (result.status === 'PAYMENT_PENDING') {
+    // AMBER: Payment pending verification
+    previewCard.classList.add('scan-already-checked');
+    const a = result.attendee || {};
+    const univid = a.universityId || a.university_id || 'N/A';
+    const attendeeName = a.name || 'Participant';
+
+    banner.innerHTML = `
+      <span style="font-size: 1.4rem;">⚠️</span>
+      <span>Payment Unverified: ${attendeeName}</span>
+    `;
+
+    details.innerHTML = `
+      <div style="font-size: 0.95rem; font-weight: 800; color: #B45309; margin-bottom: 6px;">
+        ⚠️ This ticket has NOT been approved for the 300 PKR entry fee!
+      </div>
+      <div><strong>Candidate:</strong> ${attendeeName} • <strong>Univ ID:</strong> ${univid}</div>
       <div><strong>Ticket ID:</strong> <code>${a.id}</code></div>
-      <div><strong>Check-In Timestamp:</strong> ${new Date(a.checkedInAt || Date.now()).toLocaleTimeString()}</div>
+      <div style="color: #B91C1C; font-weight: 700; margin-top: 4px;">Action Required: Direct candidate to the organizer desk or verify their receipt in Admin.</div>
     `;
 
   } else if (result.status === 'ALREADY_SCANNED') {
-    // 2. AMBER / WARNING COLOR: Already scanned, with person's name
+    // AMBER: Already scanned, with person's name
     previewCard.classList.add('scan-already-checked');
     const a = result.attendee || {};
     const univid = a.universityId || a.university_id || 'N/A';
@@ -533,18 +782,16 @@ function renderPreviewResult(result) {
 
     details.innerHTML = `
       <div style="font-size: 0.95rem; font-weight: 800; color: #B45309; margin-bottom: 6px;">
-        ⚠️ This ticket was already scanned! ${attendeeName} was admitted earlier.
+        ⚠️ DUPLICATE ENTRY: This pass was already admitted earlier!
       </div>
-      <div><strong>Participant Name:</strong> ${attendeeName}</div>
-      <div><strong>University ID:</strong> ${univid}</div>
-      <div><strong>Seminar:</strong> ${a.speaker || (a.seminar === 'seminar1' ? 'Dr. Hamad Ali (AMR)' : 'Dr. Shah Faisal (AI Health)')} • B2 MPH</div>
+      <div><strong>Candidate:</strong> ${attendeeName} • <strong>Univ ID:</strong> ${univid}</div>
       <div><strong>Ticket ID:</strong> <code>${a.id}</code></div>
-      <div><strong>Original Check-In:</strong> ${checkedTime}</div>
+      <div><strong>First Check-In Time:</strong> ${checkedTime}</div>
       <div><strong>Total Scan Attempts:</strong> ${result.scanCount || a.scanCount || 2}</div>
     `;
 
   } else {
-    // 3. RED COLOR: Wrong code / not recognized / declined
+    // RED: Wrong code / not recognized / declined
     previewCard.classList.add('scan-invalid');
     banner.innerHTML = `
       <span style="font-size: 1.4rem;">❌</span>
@@ -578,47 +825,68 @@ function renderScanHistory(history) {
   if (!container) return;
 
   if (!history || history.length === 0) {
-    container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.78rem; text-align: center; padding: 12px;">No scan history yet.</div>';
+    container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; text-align: center; padding: 20px;">No scan history recorded yet.</div>';
     return;
   }
 
   container.innerHTML = history.map(item => {
     let tagClass = 'tag-first';
-    let tagText = 'FIRST CHECK-IN';
+    let tagText = 'ADMITTED';
 
-    if (item.status === 'ALREADY_SCANNED') {
+    if (item.status === 'PAYMENT_PENDING') {
       tagClass = 'tag-dup';
-      tagText = 'DUPLICATE SCAN';
+      tagText = 'FEE PENDING';
+    } else if (item.status === 'ALREADY_SCANNED') {
+      tagClass = 'tag-dup';
+      tagText = 'DUPLICATE';
     } else if (item.status === 'INVALID') {
       tagClass = 'tag-inv';
-      tagText = 'INVALID CODE';
+      tagText = 'WRONG CODE';
     }
 
     const timeStr = new Date(item.timestamp || item.scanned_at).toLocaleTimeString();
+    const scanId = item.scanId || item.scan_id;
 
     return `
       <div class="history-row-item">
         <div>
-          <strong style="color: var(--text-main);">${item.attendeeName || item.attendee_name || 'Unknown'}</strong>
+          <strong style="color: var(--text-main); font-size: 0.86rem;">${item.attendeeName || item.attendee_name || 'Unknown'}</strong>
           <span style="color: var(--text-muted); margin-left: 4px;"><code>${item.ticketId || item.ticket_id}</code></span>
-          <div style="font-size: 0.7rem; color: var(--text-muted);">${item.seminar || ''}</div>
+          <div style="font-size: 0.72rem; color: var(--text-muted);">${item.message || ''}</div>
         </div>
-        <div style="text-align: right;">
-          <span class="h-badge-tag ${tagClass}">${tagText}</span>
-          <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 2px;">${timeStr}</div>
+        <div style="text-align: right; display: flex; align-items: center; gap: 8px;">
+          <div>
+            <span class="h-badge-tag ${tagClass}">${tagText}</span>
+            <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 2px;">${timeStr}</div>
+          </div>
+          <button class="btn-delete-log-icon" onclick="deleteScanLogItem('${scanId}')" title="Delete scan log">×</button>
         </div>
       </div>
     `;
   }).join('');
 }
 
+// Delete Single Scan Log Item
+async function deleteScanLogItem(scanId) {
+  try {
+    const res = await fetch(`/api/scan-history/${scanId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Error deleting log');
+
+    localScanHistory = localScanHistory.filter(i => (i.scanId !== scanId && i.scan_id !== scanId));
+    renderScanHistory(localScanHistory);
+  } catch (err) {
+    alert("Could not delete scan item.");
+  }
+}
+
+// Clear Entire Scan History
 async function clearLiveScanLog() {
-  if (!confirm("Clear the live scan history log?")) return;
+  if (!confirm("Clear the entire live gate scan history log?")) return;
   try {
     await fetch('/api/scan-history/clear', { method: 'POST' });
-    loadScanHistory();
+    localScanHistory = [];
+    renderScanHistory([]);
   } catch (e) {
     console.warn(e);
   }
 }
-

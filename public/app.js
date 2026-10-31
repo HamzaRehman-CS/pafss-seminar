@@ -1,27 +1,30 @@
 /**
- * PAF-IAST SCIENCE FESTA 2026 - OFFICIAL SEMINAR APPLICATION
- * Only Two Events:
- *  - Seminar 1: Wednesday, 4th November | 2:00 to 4:00 PM | B2 MPH (Dr. Hamad Ali)
- *  - Seminar 2: Thursday, 5th November | 2:00 to 4:00 PM | B2 MPH (Dr. Shah Faisal)
- * Venue: B2 MPH
+ * PAF-IAST SCIENCE FESTA 2026 - OFFICIAL 2-DAY SEMINAR APPLICATION
+ * Dates: 4th & 5th November 2026 | 2:00 to 4:00 PM (Both Days)
+ * Venue: B2 MPH (Multipurpose Hall)
+ * Fee: 300 PKR (Covers Both Keynote Seminars)
+ * Keynote Speakers:
+ *   - Day 1 (Nov 4): Dr. Hamad Ali (Antimicrobial Resistance)
+ *   - Day 2 (Nov 5): Dr. Shah Faisal (AI in Healthcare)
  */
 
 // Application State
 let appStats = {
-  seminar1: { registered: 0 },
-  seminar2: { registered: 0 },
   totalAttendees: 0,
-  checkedInCount: 0
+  verifiedCount: 0,
+  pendingCount: 0,
+  checkedInCount: 0,
+  totalRevenue: "0 PKR"
 };
 
 let currentAttendee = null;
+let currentReceiptData = null;
 
 // ===================================================================
 // INITIALIZATION
 // ===================================================================
 document.addEventListener('DOMContentLoaded', () => {
   fetchStats();
-  updateChoiceSelection();
 });
 
 // Fetch Live Statistics
@@ -38,18 +41,9 @@ async function fetchStats() {
 // ===================================================================
 // REGISTRATION MODAL LOGIC
 // ===================================================================
-function openRegisterModal(preselectSeminar) {
+function openRegisterModal() {
   const modal = document.getElementById('register-modal');
   if (!modal) return;
-
-  if (preselectSeminar === 'seminar1') {
-    const opt = document.getElementById('opt-choice-sem1');
-    if (opt) opt.checked = true;
-  } else if (preselectSeminar === 'seminar2') {
-    const opt = document.getElementById('opt-choice-sem2');
-    if (opt) opt.checked = true;
-  }
-  updateChoiceSelection();
 
   modal.classList.add('open');
 
@@ -64,18 +58,71 @@ function closeRegisterModal() {
   if (modal) modal.classList.remove('open');
 }
 
-function updateChoiceSelection() {
-  const choices = document.querySelectorAll('input[name="seminar-choice"]');
-  choices.forEach(radio => {
-    const card = radio.closest('.event-choice-radio-card');
-    if (card) {
-      if (radio.checked) {
-        card.classList.add('selected');
-      } else {
-        card.classList.remove('selected');
+// Handle Payment Receipt Image Selection & Client-Side Canvas Compression (Up to 10MB)
+function handleReceiptFileSelect(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  // Verify file is an image
+  if (!file.type.startsWith('image/')) {
+    alert("Please select a valid image file (JPG, PNG, WEBP, or HEIC).");
+    e.target.value = '';
+    return;
+  }
+
+  // 10MB limit check
+  const maxBytes = 10 * 1024 * 1024;
+  if (file.size > maxBytes) {
+    alert("File is larger than 10MB. Please choose a screenshot or photo under 10MB.");
+    e.target.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    const rawData = evt.target.result;
+    const img = new Image();
+    img.onload = function() {
+      // Crisp optimization: scale down only if photo exceeds 1400px
+      const canvas = document.createElement('canvas');
+      let w = img.width;
+      let h = img.height;
+      const maxDim = 1400;
+
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
       }
-    }
-  });
+
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Produce crisp, lightweight JPEG (~180KB - 300KB)
+      currentReceiptData = canvas.toDataURL('image/jpeg', 0.88);
+
+      // Update UI preview
+      const idleState = document.getElementById('upload-idle-state');
+      const prev = document.getElementById('upload-preview-state');
+      const previewImg = document.getElementById('receipt-preview-img');
+      const nameTag = document.getElementById('receipt-file-name');
+      const sizeTag = document.getElementById('receipt-file-size');
+
+      if (idleState) idleState.style.display = 'none';
+      if (prev) prev.style.display = 'flex';
+      if (previewImg) previewImg.src = currentReceiptData;
+      if (nameTag) nameTag.innerText = file.name;
+      if (sizeTag) sizeTag.innerText = `${(file.size / (1024 * 1024)).toFixed(2)} MB (Ready)`;
+    };
+    img.src = rawData;
+  };
+  reader.readAsDataURL(file);
 }
 
 // Handle Form Submission
@@ -87,20 +134,34 @@ async function handleRegistrationSubmit(e) {
   const phone = document.getElementById('form-phone').value.trim();
   const email = document.getElementById('form-email').value.trim();
 
-  const selectedRadio = document.querySelector('input[name="seminar-choice"]:checked');
-  const seminar = selectedRadio ? selectedRadio.value : 'seminar1';
+  // Enforce payment receipt upload
+  if (!currentReceiptData) {
+    alert("Please upload a screenshot or photo of your 300 PKR payment verification to complete registration.");
+    const dropzone = document.getElementById('payment-dropzone');
+    if (dropzone) {
+      dropzone.style.borderColor = '#EF4444';
+      dropzone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    return;
+  }
 
   const submitBtn = document.getElementById('btn-submit-reg');
   const submitText = document.getElementById('submit-btn-text');
 
   if (submitBtn) submitBtn.disabled = true;
-  if (submitText) submitText.innerText = "Generating Official Pass...";
+  if (submitText) submitText.innerText = "Submitting Registration & Proof...";
 
   try {
     const res = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, universityId, phone, email, seminar })
+      body: JSON.stringify({ 
+        name, 
+        universityId, 
+        phone, 
+        email, 
+        paymentReceipt: currentReceiptData 
+      })
     });
 
     const data = await res.json();
@@ -110,8 +171,14 @@ async function handleRegistrationSubmit(e) {
 
     currentAttendee = data.attendee;
 
-    // Reset Form
+    // Reset Form & upload dropzone
     document.getElementById('registration-form').reset();
+    currentReceiptData = null;
+    const idleState = document.getElementById('upload-idle-state');
+    const prev = document.getElementById('upload-preview-state');
+    if (idleState) idleState.style.display = 'flex';
+    if (prev) prev.style.display = 'none';
+
     closeRegisterModal();
 
     // Trigger celebration confetti
@@ -132,7 +199,7 @@ async function handleRegistrationSubmit(e) {
     alert(err.message || 'Error occurred during registration');
   } finally {
     if (submitBtn) submitBtn.disabled = false;
-    if (submitText) submitText.innerText = "Confirm Registration & Generate Ticket";
+    if (submitText) submitText.innerText = "Register & Upload Verification (300 PKR)";
   }
 }
 
@@ -153,8 +220,6 @@ function closeTicketModal() {
 function renderTicketData(attendee) {
   if (!attendee) return;
 
-  const isSeminar2 = (attendee.seminar === 'seminar2');
-
   // Ticket Card Theme
   const ticketCard = document.getElementById('active-vibrant-ticket');
   const badgePill = document.getElementById('ticket-badge-pill');
@@ -165,37 +230,36 @@ function renderTicketData(attendee) {
   // Attendee Info
   const nameVal = document.getElementById('t-pass-name');
   const unividVal = document.getElementById('t-pass-univid');
-  const phoneVal = document.getElementById('t-pass-phone');
-  const emailVal = document.getElementById('t-pass-email');
+  const paymentVal = document.getElementById('t-pass-payment');
+  const contactVal = document.getElementById('t-pass-contact');
   const codeVal = document.getElementById('t-pass-code');
+
+  if (ticketCard) ticketCard.className = 'vibrant-ticket-card ticket-unified-theme';
+  if (badgePill) {
+    badgePill.className = 't-badge-type badge-unified-pill';
+    badgePill.innerText = '2-DAY PASS • 300 PKR';
+  }
+
+  if (topicTitle) topicTitle.innerText = '2-Day Scientific & Smart Health AI Seminar Series';
+  if (speakerTag) speakerTag.innerText = 'Speakers: Dr. Hamad Ali (Nov 4) & Dr. Shah Faisal (Nov 5)';
+  if (dtTag) dtTag.innerText = 'Wed 4th & Thu 5th Nov • 2:00 – 4:00 PM';
 
   if (nameVal) nameVal.innerText = attendee.name;
   if (unividVal) unividVal.innerText = attendee.universityId || attendee.university_id;
-  if (phoneVal) phoneVal.innerText = attendee.phone;
-  if (emailVal) emailVal.innerText = attendee.email;
+  if (contactVal) contactVal.innerText = `${attendee.phone} • ${attendee.email}`;
   if (codeVal) codeVal.innerText = attendee.id;
 
-  if (isSeminar2) {
-    if (ticketCard) ticketCard.className = 'vibrant-ticket-card ticket-aih-theme';
-    if (badgePill) {
-      badgePill.className = 't-badge-type badge-aih-pill';
-      badgePill.innerText = 'SEMINAR 2 PASS';
+  // Payment Status Display
+  if (paymentVal) {
+    const isVerified = (attendee.paymentStatus === 'verified' || attendee.payment_status === 'verified');
+    if (isVerified) {
+      paymentVal.innerHTML = `<span style="color: #34D399; font-weight: 800;">300 PKR (Verified ✅)</span>`;
+    } else {
+      paymentVal.innerHTML = `<span style="color: #F87171; font-weight: 800;">300 PKR (Pending Verification ⚠️)</span>`;
     }
-    if (topicTitle) topicTitle.innerText = 'Artificial Intelligence in Healthcare: Opportunities, Challenges, and the Future of Smart Medicine in Research, Practice, and Business';
-    if (speakerTag) speakerTag.innerText = 'Speaker: Dr. Shah Faisal';
-    if (dtTag) dtTag.innerText = 'Thursday, 5th Nov • 2:00 – 4:00 PM';
-  } else {
-    if (ticketCard) ticketCard.className = 'vibrant-ticket-card ticket-amr-theme';
-    if (badgePill) {
-      badgePill.className = 't-badge-type badge-amr-pill';
-      badgePill.innerText = 'SEMINAR 1 PASS';
-    }
-    if (topicTitle) topicTitle.innerText = 'The Silent Pandemic: Antimicrobial Resistance and Its Global Health Implications';
-    if (speakerTag) speakerTag.innerText = 'Speaker: Dr. Hamad Ali';
-    if (dtTag) dtTag.innerText = 'Wednesday, 4th Nov • 2:00 – 4:00 PM';
   }
 
-  // Generate sharp QR Code
+  // Generate sharp QR Code for unique ticket pass
   generateQrCode(attendee.id);
 }
 
@@ -362,7 +426,7 @@ async function downloadTicketPDF() {
       // Place exact visual clone of ticket centered with clean margins
       doc.addImage(imgData, 'PNG', pageMargin, pageMargin, ticketMmWidth, ticketMmHeight, undefined, 'FAST');
 
-      doc.save(`PAFSS_Seminar_Pass_${passCode}.pdf`);
+      doc.save(`PAFSS_2Day_Seminar_Pass_${passCode}.pdf`);
       return;
     }
 
@@ -393,35 +457,24 @@ async function generateDirectPdfFallback(attendee) {
   const { jsPDF } = window.jspdf || window;
   if (!jsPDF) throw new Error("jsPDF not available");
 
-  const isSeminar2 = (attendee.seminar === 'seminar2');
-  const passTitle = isSeminar2
-    ? "Artificial Intelligence in Healthcare: Smart Medicine, Research & Business"
-    : "The Silent Pandemic: Antimicrobial Resistance & Global Health";
-
-  const speakerName = isSeminar2 ? "Dr. Shah Faisal" : "Dr. Hamad Ali";
-  const dateText = isSeminar2 ? "Thursday, 5th November 2026" : "Wednesday, 4th November 2026";
+  const passTitle = "2-Day Scientific & Health AI Seminar Series";
+  const speakers = "Dr. Hamad Ali (AMR) & Dr. Shah Faisal (AI Health)";
+  const dateText = "Wed 4th & Thu 5th November 2026 • 2:00 – 4:00 PM";
   const passCode = attendee.id;
   const univId = attendee.universityId || attendee.university_id || 'N/A';
 
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
-    format: [220, 105]
+    format: [220, 110]
   });
 
-  // Background matching the on-screen ticket theme
-  if (isSeminar2) {
-    doc.setFillColor(17, 20, 32);
-    doc.rect(0, 0, 220, 105, 'F');
-    doc.setDrawColor(249, 115, 22);
-  } else {
-    doc.setFillColor(9, 19, 34);
-    doc.rect(0, 0, 220, 105, 'F');
-    doc.setDrawColor(14, 165, 233);
-  }
-
+  // Dark Royal Blue Ticket Gradient
+  doc.setFillColor(11, 20, 36);
+  doc.rect(0, 0, 220, 110, 'F');
+  doc.setDrawColor(14, 165, 233);
   doc.setLineWidth(1.2);
-  doc.roundedRect(6, 6, 208, 93, 3, 3, 'S');
+  doc.roundedRect(6, 6, 208, 98, 3, 3, 'S');
 
   // Header Strip
   doc.setFillColor(255, 255, 255);
@@ -430,11 +483,11 @@ async function generateDirectPdfFallback(attendee) {
   doc.setTextColor(15, 23, 42);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10.5);
-  doc.text("PAF-IAST SCIENCE SOCIETY  •  OFFICIAL ENTRY PASS", 12, 16);
+  doc.text("PAF-IAST SCIENCE SOCIETY  •  OFFICIAL 2-DAY ENTRY PASS", 12, 16);
 
   doc.setFontSize(8.5);
-  doc.setTextColor(isSeminar2 ? 234 : 2, isSeminar2 ? 88 : 132, isSeminar2 ? 12 : 199);
-  doc.text(isSeminar2 ? "DAY 2: AI IN HEALTHCARE" : "DAY 1: ANTIMICROBIAL RESISTANCE", 208, 16, { align: 'right' });
+  doc.setTextColor(249, 115, 22);
+  doc.text("FEE: 300 PKR (BOTH DAYS)", 208, 16, { align: 'right' });
 
   // Main Left Column: Event details
   doc.setTextColor(255, 255, 255);
@@ -443,41 +496,46 @@ async function generateDirectPdfFallback(attendee) {
   const splitTitle = doc.splitTextToSize(passTitle, 134);
   doc.text(splitTitle, 12, 29);
 
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(249, 115, 22);
-  doc.text(`Speaker: ${speakerName}`, 12, 38);
+  doc.text(speakers, 12, 38);
 
   // Attendee Info Box
   doc.setFillColor(26, 36, 56);
   doc.setDrawColor(51, 65, 85);
-  doc.roundedRect(12, 42, 134, 48, 2, 2, 'FD');
+  doc.roundedRect(12, 43, 134, 48, 2, 2, 'FD');
 
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
   doc.setFont("helvetica", "bold");
-  doc.text("ATTENDEE NAME", 16, 49);
-  doc.text("UNIVERSITY ID", 78, 49);
-  doc.text("DATE & TIMING", 16, 62);
-  doc.text("OFFICIAL VENUE", 78, 62);
-  doc.text("PHONE NUMBER", 16, 75);
-  doc.text("PERSONAL GMAIL", 78, 75);
+  doc.text("ATTENDEE NAME", 16, 50);
+  doc.text("UNIVERSITY ID", 78, 50);
+  doc.text("DATES & TIMING", 16, 63);
+  doc.text("OFFICIAL VENUE", 78, 63);
+  doc.text("PAYMENT STATUS", 16, 76);
+  doc.text("CONTACT GMAIL", 78, 76);
 
   doc.setFontSize(8.5);
   doc.setTextColor(255, 255, 255);
-  doc.text(attendee.name.substring(0, 30), 16, 55);
-  doc.text(univId, 78, 55);
-  doc.text(`${dateText.split(' ')[0]} ${dateText.split(' ')[1]} • 2:00-4:00 PM`, 16, 68);
-  doc.text("B2 MPH (Multipurpose Hall)", 78, 68);
-  doc.text(attendee.phone, 16, 81);
-  doc.text(attendee.email.substring(0, 28), 78, 81);
+  doc.text(attendee.name.substring(0, 30), 16, 56);
+  doc.text(univId, 78, 56);
+  doc.text("Nov 4 & 5 • 2:00-4:00 PM", 16, 69);
+  doc.text("B2 MPH (Multipurpose Hall)", 78, 69);
+
+  const isVerified = (attendee.paymentStatus === 'verified' || attendee.payment_status === 'verified');
+  doc.setTextColor(isVerified ? 52 : 248, isVerified ? 211 : 113, isVerified ? 153 : 113);
+  doc.text(isVerified ? "300 PKR (Verified)" : "300 PKR (Pending)", 16, 82);
+
+  doc.setTextColor(255, 255, 255);
+  doc.text(attendee.email.substring(0, 28), 78, 82);
 
   // Perforation line
   doc.setDrawColor(100, 116, 139);
   doc.setLineDashPattern([2, 2], 0);
-  doc.line(154, 24, 154, 95);
+  doc.line(154, 24, 154, 98);
   doc.setLineDashPattern([], 0);
 
-  // Right Stub: Pure White Frame for QR Code (CRITICAL for instant scanability)
+  // Right Stub: QR Code
   const qrCanvas = document.querySelector('#ticket-qr-holder canvas') || document.querySelector('#ticket-qr-holder img');
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(162, 24, 46, 46, 3, 3, 'F');
@@ -490,13 +548,13 @@ async function generateDirectPdfFallback(attendee) {
   doc.setFont("courier", "bold");
   doc.setFontSize(10);
   doc.setTextColor(255, 255, 255);
-  doc.text(passCode, 185, 76, { align: 'center' });
+  doc.text(passCode, 185, 78, { align: 'center' });
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
-  doc.text("Scan at B2 MPH Entrance", 185, 82, { align: 'center' });
-  doc.text("PAF-IAST Science Society", 185, 88, { align: 'center' });
+  doc.text("Scan at B2 MPH Entrance", 185, 84, { align: 'center' });
+  doc.text("PAF-IAST Science Society", 185, 90, { align: 'center' });
 
-  doc.save(`PAFSS_Seminar_Ticket_${passCode}.pdf`);
+  doc.save(`PAFSS_2Day_Seminar_Ticket_${passCode}.pdf`);
 }
