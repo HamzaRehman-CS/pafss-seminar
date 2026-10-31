@@ -1543,3 +1543,248 @@ html, body {
   gap: 10px;
   flex-wrap: wrap;
 }
+
+/* ===================================================================
+   EMAIL & SPAM NOTICE HIGHLIGHT BOX (REGISTRATION POPUP)
+   =================================================================== */
+.mail-alert-highlight-box {
+  background: #FFFBEB;
+  border: 1.5px solid #F59E0B;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  margin: 12px 0 14px;
+}
+
+.mail-alert-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.mail-alert-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mail-alert-title {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #92400E;
+}
+
+.mail-alert-desc {
+  font-size: 0.8rem;
+  color: #78350F;
+  line-height: 1.45;
+}
+
+.spam-pill-tag {
+  background: #FEF3C7;
+  color: #B45309;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #FCD34D;
+  font-weight: 800;
+}
+
+/* ===================================================================
+   ADMIN APPROVED TICKETS SECTION & EMAIL DISPATCH
+   =================================================================== */
+.btn-dispatch-mail {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background: var(--navy-dark);
+  color: #FFFFFF;
+  border: 1px solid var(--navy-dark);
+  border-radius: var(--radius-pill);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-dispatch-mail:hover {
+  background: var(--navy-primary);
+  border-color: var(--navy-primary);
+  transform: translateY(-1px);
+}
+
+.btn-dl-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: #FFFFFF;
+  color: var(--navy-primary);
+  border: 1px solid var(--border-navy);
+  border-radius: var(--radius-pill);
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-dl-pdf:hover {
+  background: var(--navy-tint);
+  border-color: var(--navy-primary);
+}
+
+.btn-preview-ticket {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  background: var(--card-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--navy-dark);
+  cursor: pointer;
+}
+
+.btn-preview-ticket:hover {
+  background: var(--navy-tint);
+  color: var(--navy-primary);
+}
+
+/* Email & Ticket Dispatcher Modal */
+.email-dispatcher-box {
+  max-width: 680px;
+}
+
+.email-preview-scroll-area {
+  max-height: 480px;
+  overflow-y: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  background: #FFFFFF;
+  text-align: left;
+  margin-bottom: 16px;
+}
+
+.email-meta-head {
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.82rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-body);
+}
+
+.email-meta-head strong {
+  color: var(--navy-dark);
+}
+
+.email-logos-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 0 16px;
+  border-bottom: 2px solid var(--navy-tint-border);
+  margin-bottom: 16px;
+  background: var(--navy-tint);
+  border-radius: var(--radius-sm);
+}
+
+.email-logo-img {
+  height: 46px;
+  width: auto;
+  object-fit: contain;
+}
+
+.email-letter-body {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-main);
+}
+
+.email-letter-body p {
+  margin-bottom: 12px;
+}
+
+.email-ticket-mini-card {
+  background: #0A192F;
+  color: #FFFFFF;
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin: 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.email-ticket-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+}
+
+.email-ticket-qr-box {
+  width: 90px;
+  height: 90px;
+  background: #FFFFFF;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.email-ticket-qr-box canvas,
+.email-ticket-qr-box img {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Batch Dispatch Modal */
+.batch-dispatch-box {
+  max-width: 650px;
+}
+
+.batch-stats-ribbon {
+  background: var(--navy-tint);
+  border: 1px solid var(--navy-tint-border);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.batch-list-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+
+.batch-candidate-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.82rem;
+}
+
+.batch-candidate-row:last-child {
+  border-bottom: none;
+}
+

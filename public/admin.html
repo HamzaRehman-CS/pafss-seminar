@@ -12,7 +12,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
 
-  <!-- HTML5 QR Code Scanner Library -->
+  <!-- Offline-Ready Libraries for QR, PDF & Camera Scanner -->
+  <script src="qrcode.min.js"></script>
+  <script src="jspdf.umd.min.js"></script>
   <script src="html5-qrcode.min.js"></script>
 
   <link rel="stylesheet" href="styles.css">
@@ -106,10 +108,13 @@
         </div>
       </div>
 
-      <!-- Organized Navigation Tabs -->
+      <!-- Organized Navigation Tabs (3 Dedicated Sections) -->
       <div class="admin-nav-tabs-bar">
         <button class="admin-tab-btn active" id="tab-btn-directory" onclick="switchAdminTab('directory')">
           <span>📋 Candidates &amp; Payments</span>
+        </button>
+        <button class="admin-tab-btn" id="tab-btn-tickets" onclick="switchAdminTab('tickets')">
+          <span>🎟️ Approved Tickets (<strong id="tab-tickets-count">0</strong>)</span>
         </button>
         <button class="admin-tab-btn" id="tab-btn-scanner" onclick="switchAdminTab('scanner')">
           <span>📷 Gate Scanner &amp; QR Control</span>
@@ -173,7 +178,61 @@
         </div>
       </section>
 
-      <!-- TAB 2: LIVE GATE QR SCANNER & SCAN HISTORY -->
+      <!-- TAB 2: APPROVED TICKETS & GMAIL DISPATCH (ONLY VERIFIED CANDIDATES) -->
+      <section id="tab-pane-tickets" class="admin-tab-pane" style="display: none;">
+        <div class="admin-section-box">
+          <div class="box-head-row">
+            <div>
+              <h3>🎟️ Approved Candidate Tickets &amp; Gmail Dispatch</h3>
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+                Verified attendees eligible for admission. Dispatch personalized Gmail emails and generate high-resolution PDF tickets with working scannable QR codes.
+              </p>
+            </div>
+            
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button class="navy-primary-btn" onclick="openBatchDispatchModal()" style="padding: 7px 16px; font-size: 0.82rem;">
+                ✉️ Send to All Approved (Batch)
+              </button>
+              <button class="glass-btn-subtle" onclick="downloadAllApprovedTickets()" style="padding: 7px 14px; font-size: 0.8rem;">
+                📥 Download All Tickets (PDF)
+              </button>
+            </div>
+          </div>
+
+          <!-- Search & Filter Controls -->
+          <div class="dir-filters-bar">
+            <input type="text" id="tickets-search-input" placeholder="Search approved candidate by name, university ID, ticket, email..." oninput="handleTicketsSearch()" class="clean-glass-input" style="max-width: 420px; padding: 8px 14px; font-size: 0.85rem;">
+            
+            <div style="font-size: 0.82rem; color: var(--navy-primary); font-weight: 700;">
+              Total Approved: <span id="tickets-verified-total">0</span> candidates
+            </div>
+          </div>
+
+          <!-- Approved Candidates Table -->
+          <div class="admin-table-scroll-wrap">
+            <table class="admin-data-table">
+              <thead>
+                <tr>
+                  <th>Ticket ID</th>
+                  <th>Candidate Name</th>
+                  <th>Univ ID</th>
+                  <th>Personal Gmail</th>
+                  <th>Phone</th>
+                  <th>Payment Proof</th>
+                  <th>Ticket Preview</th>
+                  <th>Gmail &amp; PDF Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tickets-tbody">
+                <!-- Dynamically populated with approved candidates only -->
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- TAB 3: LIVE GATE QR SCANNER & SCAN HISTORY -->
       <section id="tab-pane-scanner" class="admin-tab-pane" style="display: none;">
         <div class="admin-split-workspace">
           
@@ -289,6 +348,128 @@
       </div>
     </div>
   </div>
+
+  <!-- ===================================================================
+       INDIVIDUAL GMAIL DISPATCH & TICKET PASS MODAL
+       =================================================================== -->
+  <div class="glass-modal-overlay" id="email-ticket-modal" role="dialog" aria-modal="true" aria-labelledby="email-modal-title">
+    <div class="glass-modal-box email-dispatcher-box">
+      <div class="modal-glass-header">
+        <div class="modal-header-titles">
+          <h3 id="email-modal-title">✉️ Candidate Gmail Dispatch &amp; Ticket Pass</h3>
+          <p id="email-modal-subtitle">Personalized email with official logos, scannable QR ticket, and PDF attachment</p>
+        </div>
+        <button class="modal-close-glass-btn" onclick="closeEmailTicketModal()" aria-label="Close modal">&times;</button>
+      </div>
+
+      <div class="modal-glass-body">
+        
+        <!-- Recipient & Subject Header -->
+        <div class="email-meta-head">
+          <div><strong>To (Candidate Gmail):</strong> <span id="dispatch-email-to">attendee@gmail.com</span></div>
+          <div><strong>Subject:</strong> <span id="dispatch-email-subject">Official Entry Pass - PAF-IAST Science Society 2-Day Seminar</span></div>
+          <div><strong>Attachment:</strong> <span id="dispatch-email-attachment" style="color: var(--navy-primary); font-weight: 700;">Ticket_PAFSS-26-001.pdf (Attached)</span></div>
+        </div>
+
+        <!-- Rendered Email Body with Logos & Visual Ticket Preview -->
+        <div class="email-preview-scroll-area" id="email-preview-container">
+          
+          <!-- Society and University Logos in Email Header -->
+          <div class="email-logos-header">
+            <img src="assets/university_logo.png" alt="PAF-IAST University" class="email-logo-img">
+            <span style="font-weight: 800; color: var(--navy-primary); font-size: 1.1rem;">•</span>
+            <img src="assets/society_logo.png" alt="PAF-IAST Science Society" class="email-logo-img">
+          </div>
+
+          <div class="email-letter-body" id="email-letter-content">
+            <!-- Populated dynamically with candidate details -->
+          </div>
+
+          <!-- Official Visual Ticket Card Preview with Working QR -->
+          <div class="email-ticket-mini-card">
+            <div class="email-ticket-details">
+              <span style="font-size: 0.72rem; letter-spacing: 0.05em; color: #94A3B8; text-transform: uppercase;">PAF-IAST Science Society</span>
+              <strong style="font-size: 1.05rem; color: #FFFFFF;" id="preview-ticket-name">Candidate Name</strong>
+              <span style="font-size: 0.8rem; color: #E2E8F0;" id="preview-ticket-univid">Univ ID: 001</span>
+              <span style="font-size: 0.78rem; color: #38BDF8;" id="preview-ticket-dates">Wed 4th &amp; Thu 5th Nov • 2:00 – 4:00 PM • B2 MPH</span>
+              <span style="font-size: 0.74rem; color: #34D399; font-weight: 700;">✅ 300 PKR Verified Pass • Both Keynotes</span>
+            </div>
+            <div class="email-ticket-qr-box" id="preview-ticket-qr">
+              <!-- Crisp working QR code rendered here -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Action Toolbar -->
+        <div style="display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;">
+          <button class="navy-primary-btn" id="btn-open-gmail-compose" onclick="launchGmailComposeDirectly()">
+            🚀 Open in Gmail Compose
+          </button>
+          <button class="glass-btn-subtle" onclick="copyEmailTextToClipboard()">
+            📋 Copy Email Text
+          </button>
+          <button class="btn-dl-pdf" id="btn-download-modal-pdf" onclick="downloadCurrentCandidatePDF()">
+            📥 Download Ticket PDF
+          </button>
+          <button class="glass-btn-subtle" onclick="closeEmailTicketModal()">
+            Close
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================
+       BATCH GMAIL DISPATCH MODAL (ALL APPROVED CANDIDATES)
+       =================================================================== -->
+  <div class="glass-modal-overlay" id="batch-dispatch-modal" role="dialog" aria-modal="true" aria-labelledby="batch-modal-title">
+    <div class="glass-modal-box batch-dispatch-box">
+      <div class="modal-glass-header">
+        <div class="modal-header-titles">
+          <h3 id="batch-modal-title">✉️ Batch Gmail Dispatch (All Approved Candidates)</h3>
+          <p>Send personalized tickets to all verified attendees</p>
+        </div>
+        <button class="modal-close-glass-btn" onclick="closeBatchDispatchModal()" aria-label="Close modal">&times;</button>
+      </div>
+
+      <div class="modal-glass-body">
+        
+        <div class="batch-stats-ribbon">
+          <div>
+            <strong style="font-size: 1.1rem; color: var(--navy-dark);" id="batch-count-ready">0</strong>
+            <span style="font-size: 0.82rem; color: var(--text-muted); margin-left: 4px;">Verified Attendees Ready for Dispatch</span>
+          </div>
+          <button class="glass-btn-subtle" onclick="copyAllApprovedEmailsBCC()" style="font-size: 0.78rem; padding: 5px 12px;">
+            📋 Copy All Emails (BCC)
+          </button>
+        </div>
+
+        <div class="batch-list-scroll" id="batch-candidates-list">
+          <!-- Populated with all approved candidates -->
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; margin-top: 14px;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="navy-primary-btn" onclick="launchBatchGmailCompose()">
+              🚀 Open Gmail for All (BCC)
+            </button>
+            <button class="glass-btn-subtle" onclick="downloadAllApprovedTickets()">
+              📥 Download All Ticket PDFs
+            </button>
+          </div>
+          <button class="glass-btn-subtle" onclick="closeBatchDispatchModal()">
+            Done
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Offscreen hidden QR holder for PDF generation -->
+  <div id="hidden-qr-generator" style="position: absolute; left: -9999px; top: -9999px; width: 200px; height: 200px;"></div>
 
   <script src="admin.js"></script>
 </body>

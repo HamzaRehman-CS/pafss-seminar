@@ -158,27 +158,50 @@ function adminSignOut() {
 }
 
 // ===================================================================
-// TAB SWITCHING (SMOOTH & ZERO LAG)
+// TAB SWITCHING (SMOOTH & ZERO LAG) - 3 DEDICATED SECTIONS
 // ===================================================================
 function switchAdminTab(tabName) {
   const btnDir = document.getElementById('tab-btn-directory');
+  const btnTickets = document.getElementById('tab-btn-tickets');
   const btnScan = document.getElementById('tab-btn-scanner');
+
   const paneDir = document.getElementById('tab-pane-directory');
+  const paneTickets = document.getElementById('tab-pane-tickets');
   const paneScan = document.getElementById('tab-pane-scanner');
 
   if (tabName === 'directory') {
-    btnDir.classList.add('active');
-    btnScan.classList.remove('active');
-    paneDir.style.display = 'block';
-    paneScan.style.display = 'none';
+    if (btnDir) btnDir.classList.add('active');
+    if (btnTickets) btnTickets.classList.remove('active');
+    if (btnScan) btnScan.classList.remove('active');
+
+    if (paneDir) paneDir.style.display = 'block';
+    if (paneTickets) paneTickets.style.display = 'none';
+    if (paneScan) paneScan.style.display = 'none';
+
     if (html5Scanner && isScannerRunning) {
       stopCameraScanner();
     }
-  } else {
-    btnScan.classList.add('active');
-    btnDir.classList.remove('active');
-    paneScan.style.display = 'block';
-    paneDir.style.display = 'none';
+  } else if (tabName === 'tickets') {
+    if (btnTickets) btnTickets.classList.add('active');
+    if (btnDir) btnDir.classList.remove('active');
+    if (btnScan) btnScan.classList.remove('active');
+
+    if (paneTickets) paneTickets.style.display = 'block';
+    if (paneDir) paneDir.style.display = 'none';
+    if (paneScan) paneScan.style.display = 'none';
+
+    if (html5Scanner && isScannerRunning) {
+      stopCameraScanner();
+    }
+    renderApprovedTicketsSection();
+  } else if (tabName === 'scanner') {
+    if (btnScan) btnScan.classList.add('active');
+    if (btnDir) btnDir.classList.remove('active');
+    if (btnTickets) btnTickets.classList.remove('active');
+
+    if (paneScan) paneScan.style.display = 'block';
+    if (paneDir) paneDir.style.display = 'none';
+    if (paneTickets) paneTickets.style.display = 'none';
   }
 }
 
@@ -200,6 +223,8 @@ async function fetchDashboardData() {
     if (attendeesRes.ok) {
       localAttendeeCache = await attendeesRes.json();
       renderDirectoryTable(localAttendeeCache);
+      updateApprovedTicketsBadge();
+      handleTicketsSearch();
     }
   } catch (err) {
     console.warn("Could not fetch latest data:", err);
@@ -229,6 +254,8 @@ function updateStatsFromLocal() {
     checkedInCount: localAttendeeCache.filter(a => a.checkedIn).length,
     totalRevenue: `${verifiedCount * 300} PKR`
   });
+  updateApprovedTicketsBadge();
+  handleTicketsSearch();
 }
 
 function setFilter(filter, btn) {
@@ -1053,3 +1080,631 @@ async function clearLiveScanLog() {
     console.warn(e);
   }
 }
+
+// ===================================================================
+// SECTION: APPROVED TICKETS, GMAIL DISPATCH & HIGH-RES PDF PASSES
+// (Only candidates approved in Admin appear in this dedicated section)
+// ===================================================================
+
+let currentDispatchAttendee = null;
+let cachedUnivLogo = null;
+let cachedSocietyLogo = null;
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getApprovedCandidates() {
+  return localAttendeeCache.filter(a => a.paymentStatus === 'verified' || a.payment_status === 'verified');
+}
+
+function updateApprovedTicketsBadge() {
+  const approved = getApprovedCandidates();
+  const countBadge = document.getElementById('tab-tickets-count');
+  const totalDisplay = document.getElementById('tickets-verified-total');
+  const batchCount = document.getElementById('batch-count-ready');
+
+  if (countBadge) countBadge.innerText = approved.length;
+  if (totalDisplay) totalDisplay.innerText = approved.length;
+  if (batchCount) batchCount.innerText = approved.length;
+}
+
+function renderApprovedTicketsSection() {
+  updateApprovedTicketsBadge();
+  handleTicketsSearch();
+}
+
+function handleTicketsSearch() {
+  const searchInput = document.getElementById('tickets-search-input');
+  const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+  const approved = getApprovedCandidates();
+
+  const filtered = approved.filter(a => {
+    if (!query) return true;
+    const name = (a.name || '').toLowerCase();
+    const id = (a.id || '').toLowerCase();
+    const univId = (a.universityId || a.university_id || '').toLowerCase();
+    const email = (a.email || '').toLowerCase();
+    const phone = (a.phone || '').toLowerCase();
+    return name.includes(query) || id.includes(query) || univId.includes(query) || email.includes(query) || phone.includes(query);
+  });
+
+  renderApprovedTicketsTable(filtered);
+}
+
+function renderApprovedTicketsTable(candidates) {
+  const tbody = document.getElementById('tickets-tbody');
+  if (!tbody) return;
+
+  if (!candidates || candidates.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 36px;">
+          No approved candidate tickets found. Once candidate payments (300 PKR) are approved in the Candidates tab, their tickets will immediately appear here.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = candidates.map(a => {
+    const univid = a.universityId || a.university_id || 'N/A';
+    
+    // Receipt thumbnail
+    let proofHtml = `<span style="color: var(--text-muted); font-size: 0.76rem;">No file</span>`;
+    const receiptSrc = a.paymentReceipt || a.payment_receipt;
+    if (receiptSrc) {
+      proofHtml = `
+        <div class="receipt-thumb-wrap" onclick="viewReceiptImage('${a.id}')" title="Click to view payment proof">
+          <img src="${receiptSrc}" class="admin-receipt-thumb" alt="Proof">
+          <span class="zoom-icon-chip">🔍 Zoom</span>
+        </div>
+      `;
+    }
+
+    return `
+      <tr>
+        <td><code>${a.id}</code></td>
+        <td>
+          <strong style="color: var(--navy-dark); font-size: 0.92rem;">${escapeHtml(a.name)}</strong>
+        </td>
+        <td><span class="univ-id-chip">${escapeHtml(univid)}</span></td>
+        <td><span style="font-size: 0.82rem; color: var(--navy-primary); font-weight: 600;">${escapeHtml(a.email)}</span></td>
+        <td><span style="font-size: 0.8rem;">${escapeHtml(a.phone)}</span></td>
+        <td>${proofHtml}</td>
+        <td>
+          <button class="btn-preview-ticket" onclick="openSingleGmailDispatch('${a.id}')" title="Inspect official pass and QR code">
+            🎟️ View Ticket Pass
+          </button>
+        </td>
+        <td>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button class="btn-dispatch-mail" onclick="openSingleGmailDispatch('${a.id}')" title="Open Gmail composer with details">
+              ✉️ Send Mail
+            </button>
+            <button class="btn-dl-pdf" onclick="generateAttendeeTicketPDF('${a.id}')" title="Download high-res PDF entry pass">
+              📥 Ticket PDF
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Preload logos into base64 data URLs for instantaneous PDF generation
+async function preloadLogos() {
+  if (!cachedUnivLogo) {
+    cachedUnivLogo = await loadImageAsDataUrl('assets/university_logo.png');
+  }
+  if (!cachedSocietyLogo) {
+    cachedSocietyLogo = await loadImageAsDataUrl('assets/society_logo.png');
+  }
+}
+
+function loadImageAsDataUrl(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (e) {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+// ===================================================================
+// INDIVIDUAL GMAIL DISPATCH MODAL & VISUAL TICKET PASS
+// ===================================================================
+
+function openSingleGmailDispatch(attendeeId) {
+  const attendee = localAttendeeCache.find(a => a.id.toUpperCase() === attendeeId.toUpperCase());
+  if (!attendee) {
+    alert("Candidate record not found.");
+    return;
+  }
+
+  currentDispatchAttendee = attendee;
+  const univid = attendee.universityId || attendee.university_id || 'N/A';
+  const cleanName = attendee.name.replace(/[^a-zA-Z0-9]/g, '_');
+
+  // Populate Meta Header
+  const toEl = document.getElementById('dispatch-email-to');
+  const subEl = document.getElementById('dispatch-email-subject');
+  const attEl = document.getElementById('dispatch-email-attachment');
+
+  if (toEl) toEl.innerText = attendee.email;
+  if (subEl) subEl.innerText = `Official Entry Pass - PAF-IAST Science Society 2-Day Seminar Series [Ticket ID: ${attendee.id}]`;
+  if (attEl) attEl.innerText = `Ticket_${attendee.id}_${cleanName}.pdf (Auto-Downloaded on Send)`;
+
+  // Populate Personalized Email Letter
+  const letterBody = document.getElementById('email-letter-content');
+  if (letterBody) {
+    letterBody.innerHTML = `
+      <p>Dear <strong>${escapeHtml(attendee.name)}</strong>,</p>
+
+      <p>
+        Congratulations! We are pleased to confirm that your registration and <strong>300 PKR entry fee</strong> for the upcoming <strong>PAF-IAST Science Society 2-Day Seminar Series</strong> have been successfully approved by the society.
+      </p>
+
+      <p style="margin-bottom: 6px;">
+        Here are your official seminar and venue details:
+      </p>
+
+      <ul style="margin: 4px 0 14px 20px; font-size: 0.85rem; line-height: 1.6;">
+        <li><strong>Official Venue:</strong> B2 MPH (Multipurpose Hall), Pak-Austria Fachhochschule: Institute of Applied Sciences and Technology (PAF-IAST), Mang, Haripur</li>
+        <li><strong>Day 1 (Wednesday, 4th Nov • 2:00 – 4:00 PM):</strong> "The Silent Pandemic: Antimicrobial Resistance and Its Global Health Implications" — Speaker: <strong>Dr. Hamad Ali</strong></li>
+        <li><strong>Day 2 (Thursday, 5th Nov • 2:00 – 4:00 PM):</strong> "Artificial Intelligence in Healthcare: Smart Medicine, Clinical Research &amp; Biotechnology" — Speaker: <strong>Dr. Shah Faisal</strong></li>
+        <li><strong>Registration Ticket ID:</strong> <code style="font-weight: 800; color: #1E3A8A;">${escapeHtml(attendee.id)}</code></li>
+        <li><strong>University ID:</strong> <strong>${escapeHtml(univid)}</strong></li>
+        <li><strong>Payment Status:</strong> <span style="color: #059669; font-weight: 800;">VERIFIED (300 PKR)</span></li>
+      </ul>
+
+      <p>
+        Your official entry ticket with your unique scannable QR code is attached below and ready for download. Please ensure you have this pass available on your mobile device or as a printed copy at the entrance of B2 MPH for admission scanning.
+      </p>
+
+      <p>
+        We look forward to welcoming you to this transformative 2-day academic gathering!
+      </p>
+
+      <p style="margin-top: 14px; font-size: 0.82rem; color: #475569;">
+        Warm regards,<br>
+        <strong>PAF-IAST Science Society Organizing Committee</strong><br>
+        Pak-Austria Fachhochschule: Institute of Applied Sciences and Technology (PAF-IAST)
+      </p>
+    `;
+  }
+
+  // Populate Mini Ticket Card Preview
+  const pName = document.getElementById('preview-ticket-name');
+  const pUniv = document.getElementById('preview-ticket-univid');
+  const pDates = document.getElementById('preview-ticket-dates');
+  const qrBox = document.getElementById('preview-ticket-qr');
+
+  if (pName) pName.innerText = attendee.name;
+  if (pUniv) pUniv.innerText = `Univ ID: ${univid}`;
+  if (pDates) pDates.innerText = `Wed 4th & Thu 5th Nov • 2:00 – 4:00 PM • B2 MPH`;
+
+  if (qrBox) {
+    qrBox.innerHTML = '';
+    new QRCode(qrBox, {
+      text: attendee.id,
+      width: 80,
+      height: 80,
+      colorDark: "#0A192F",
+      colorLight: "#FFFFFF",
+      correctLevel: QRCode.CorrectLevel.H
+    });
+  }
+
+  const modal = document.getElementById('email-ticket-modal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeEmailTicketModal() {
+  const modal = document.getElementById('email-ticket-modal');
+  if (modal) modal.classList.remove('open');
+  currentDispatchAttendee = null;
+}
+
+// Plain Text Email for Gmail Composer & Clipboard
+function generatePlainEmailBody(attendee) {
+  const univid = attendee.universityId || attendee.university_id || 'N/A';
+  return `Dear ${attendee.name},
+
+Congratulations! We are pleased to confirm that your registration and 300 PKR entry fee for the upcoming PAF-IAST Science Society 2-Day Seminar Series have been successfully approved by the society.
+
+OFFICIAL EVENT & VENUE DETAILS:
+-----------------------------------------------------------
+• Event: PAF-IAST Science Society 2-Day Seminar Series
+• Venue: B2 MPH (Multipurpose Hall), Pak-Austria Fachhochschule: Institute of Applied Sciences and Technology (PAF-IAST), Mang, Haripur
+
+SEMINAR SCHEDULE:
+• Day 1 (Wednesday, 4th Nov 2026 • 2:00 – 4:00 PM):
+  "The Silent Pandemic: Antimicrobial Resistance and Its Global Health Implications"
+  Speaker: Dr. Hamad Ali
+
+• Day 2 (Thursday, 5th Nov 2026 • 2:00 – 4:00 PM):
+  "Artificial Intelligence in Healthcare: Smart Medicine, Clinical Research & Biotechnology"
+  Speaker: Dr. Shah Faisal
+
+YOUR TICKET & CANDIDATE CREDENTIALS:
+• Attendee Name: ${attendee.name}
+• University ID: ${univid}
+• Ticket Pass ID: ${attendee.id}
+• Entry Fee Status: 300 PKR VERIFIED (Official 2-Day Admission)
+
+GATE ADMISSION INSTRUCTIONS:
+Please keep your official PDF entry ticket with you (either saved on your mobile device or printed out). Your unique QR code will be scanned at the entrance of B2 MPH for admission.
+
+We look forward to an enlightening and inspiring two days together!
+
+Warm regards,
+PAF-IAST Science Society Organizing Committee
+Pak-Austria Fachhochschule: Institute of Applied Sciences and Technology (PAF-IAST)`;
+}
+
+// 1-Click Launch Gmail Compose & Trigger PDF Download
+async function launchGmailComposeDirectly() {
+  if (!currentDispatchAttendee) return;
+  const attendee = currentDispatchAttendee;
+
+  // 1. Download candidate's PDF ticket immediately
+  try {
+    await generateAttendeeTicketPDF(attendee);
+  } catch (err) {
+    console.warn("Could not auto-download ticket PDF:", err);
+  }
+
+  // 2. Build pre-filled Gmail compose link
+  const subject = `Official Entry Pass - PAF-IAST Science Society 2-Day Seminar [${attendee.id}]`;
+  const body = generatePlainEmailBody(attendee);
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(attendee.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  // 3. Open Gmail Compose in a new tab
+  window.open(gmailUrl, '_blank');
+
+  showTransientToast(`🚀 Gmail Compose opened! Ticket PDF downloaded to your files to attach.`);
+}
+
+function copyEmailTextToClipboard() {
+  if (!currentDispatchAttendee) return;
+  const body = generatePlainEmailBody(currentDispatchAttendee);
+  
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(body).then(() => {
+      showTransientToast("📋 Personalized email text copied to clipboard!");
+    }).catch(() => {
+      fallbackCopyText(body);
+    });
+  } else {
+    fallbackCopyText(body);
+  }
+}
+
+function fallbackCopyText(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  showTransientToast("📋 Email text copied to clipboard!");
+}
+
+function downloadCurrentCandidatePDF() {
+  if (!currentDispatchAttendee) return;
+  generateAttendeeTicketPDF(currentDispatchAttendee);
+}
+
+// ===================================================================
+// HIGH-RESOLUTION PDF ENTRY PASS GENERATOR
+// Includes official logos, crisp scannable QR code & pure white frame
+// ===================================================================
+
+async function generateAttendeeTicketPDF(attendeeOrId) {
+  let attendee = attendeeOrId;
+  if (typeof attendeeOrId === 'string') {
+    attendee = localAttendeeCache.find(a => a.id.toUpperCase() === attendeeOrId.toUpperCase());
+  }
+  if (!attendee) {
+    alert("Candidate record not found.");
+    return;
+  }
+
+  await preloadLogos();
+
+  const { jsPDF } = window.jspdf || window;
+  if (!jsPDF) {
+    alert("PDF generation engine not ready.");
+    return;
+  }
+
+  // Generate QR code offscreen using QRCode library
+  const qrContainer = document.getElementById('hidden-qr-generator') || document.createElement('div');
+  qrContainer.innerHTML = '';
+  new QRCode(qrContainer, {
+    text: attendee.id,
+    width: 256,
+    height: 256,
+    colorDark: "#000000",
+    colorLight: "#FFFFFF",
+    correctLevel: QRCode.CorrectLevel.H
+  });
+
+  // Brief pause for QR canvas rendering
+  await new Promise(r => setTimeout(r, 60));
+
+  const qrCanvas = qrContainer.querySelector('canvas') || qrContainer.querySelector('img');
+  let qrDataUrl = '';
+  if (qrCanvas) {
+    qrDataUrl = qrCanvas.toDataURL ? qrCanvas.toDataURL('image/png') : qrCanvas.src;
+  }
+
+  // Landscape format: 220mm x 105mm
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: [220, 105]
+  });
+
+  // Page background: Clean White / Light Slate
+  doc.setFillColor(248, 250, 252);
+  doc.rect(0, 0, 220, 105, 'F');
+
+  // Main Ticket Body: Deep Navy Blue
+  doc.setFillColor(10, 25, 47); // #0A192F
+  doc.roundedRect(6, 6, 208, 93, 4, 4, 'F');
+
+  // Top Header Bar
+  doc.setFillColor(15, 34, 64); // #0F2240
+  doc.roundedRect(6, 6, 208, 16, 4, 4, 'F');
+  doc.rect(6, 16, 208, 6, 'F'); // square bottom of top bar
+
+  // Embed Official Logos in Header
+  if (cachedUnivLogo) {
+    doc.addImage(cachedUnivLogo, 'PNG', 10, 8, 26, 12, undefined, 'FAST');
+  }
+  if (cachedSocietyLogo) {
+    doc.addImage(cachedSocietyLogo, 'PNG', 39, 8, 12, 12, undefined, 'FAST');
+  }
+
+  // Header Titles
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184); // #94A3B8
+  doc.text("PAK-AUSTRIA FACHHOCHSCHULE: IAST", 54, 12);
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text("PAF-IAST SCIENCE SOCIETY  •  OFFICIAL ENTRY PASS", 54, 18);
+
+  // Pill badge: 2-DAY PASS
+  doc.setFillColor(14, 165, 233); // Sky Blue #0EA5E9
+  doc.roundedRect(172, 9, 36, 8, 4, 4, 'F');
+  doc.setFontSize(7.5);
+  doc.setTextColor(255, 255, 255);
+  doc.text("2-DAY SEMINAR PASS", 190, 14.5, { align: 'center' });
+
+  // Main Seminar Title
+  doc.setFontSize(11);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.text("2-Day Seminar Series: Antimicrobial Resistance & AI in Healthcare", 12, 29);
+
+  // Speakers & Schedule Row
+  doc.setFontSize(8.5);
+  doc.setTextColor(249, 115, 22); // Orange Accent
+  doc.text("Speakers: Dr. Hamad Ali & Dr. Shah Faisal", 12, 35);
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(148, 163, 184);
+  doc.setFont("helvetica", "normal");
+  doc.text("• Day 1: Wed 4th Nov (2:00-4:00 PM) | AMR & Global Health  • Day 2: Thu 5th Nov (2:00-4:00 PM) | AI in Medicine", 12, 40);
+
+  // Candidate Data Box
+  doc.setFillColor(17, 34, 60);
+  doc.setDrawColor(30, 58, 102);
+  doc.roundedRect(12, 43, 138, 48, 2, 2, 'FD');
+
+  const univid = attendee.universityId || attendee.university_id || 'N/A';
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.8);
+  doc.setTextColor(148, 163, 184);
+  doc.text("ATTENDEE NAME", 16, 49);
+  doc.text("UNIVERSITY ID", 82, 49);
+
+  doc.text("EVENT DATES & TIMING", 16, 62);
+  doc.text("OFFICIAL VENUE", 82, 62);
+
+  doc.text("PHONE NUMBER", 16, 75);
+  doc.text("PERSONAL GMAIL", 82, 75);
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(255, 255, 255);
+  doc.text(attendee.name.substring(0, 32), 16, 55);
+  doc.text(String(univid), 82, 55);
+
+  doc.text("Wed 4th & Thu 5th Nov • 2:00 - 4:00 PM", 16, 68);
+  doc.text("B2 MPH (Multipurpose Hall)", 82, 68);
+
+  doc.text(attendee.phone || 'N/A', 16, 81);
+  doc.text((attendee.email || 'N/A').substring(0, 30), 82, 81);
+
+  // 300 PKR Verified Tag
+  doc.setFillColor(16, 185, 129); // #10B981 Emerald Green
+  doc.roundedRect(16, 84, 48, 5, 2, 2, 'F');
+  doc.setFontSize(6);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.text("✓ 300 PKR ENTRY FEE VERIFIED", 40, 87.5, { align: 'center' });
+
+  // Perforation dashed divider line
+  doc.setDrawColor(100, 116, 139);
+  doc.setLineDashPattern([2, 2], 0);
+  doc.line(155, 24, 155, 95);
+  doc.setLineDashPattern([], 0);
+
+  // Ticket Stub: Pure White Quiet Frame for Instant Scanner Detection
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(162, 26, 46, 46, 3, 3, 'F');
+
+  if (qrDataUrl) {
+    doc.addImage(qrDataUrl, 'PNG', 165, 29, 40, 40);
+  }
+
+  // Pass Code / Ticket ID
+  doc.setFont("courier", "bold");
+  doc.setFontSize(9.5);
+  doc.setTextColor(255, 255, 255);
+  doc.text(attendee.id, 185, 78, { align: 'center' });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text("Scan at B2 MPH Entrance", 185, 83, { align: 'center' });
+  doc.text("PAF-IAST Science Society", 185, 87, { align: 'center' });
+
+  // Download PDF
+  const cleanName = attendee.name.replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`PAFSS_Seminar_Ticket_${attendee.id}_${cleanName}.pdf`);
+  return true;
+}
+
+// ===================================================================
+// BATCH GMAIL DISPATCH & BULK TICKET EXPORT
+// ===================================================================
+
+function openBatchDispatchModal() {
+  const approved = getApprovedCandidates();
+  const countEl = document.getElementById('batch-count-ready');
+  if (countEl) countEl.innerText = approved.length;
+
+  const listContainer = document.getElementById('batch-candidates-list');
+  if (listContainer) {
+    if (approved.length === 0) {
+      listContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.82rem; text-align: center; padding: 24px;">No approved candidates found. Approve payments in the Candidates tab first.</div>';
+    } else {
+      listContainer.innerHTML = approved.map(a => {
+        const univid = a.universityId || a.university_id || 'N/A';
+        return `
+          <div class="batch-candidate-row">
+            <div>
+              <strong style="color: var(--navy-dark);">${escapeHtml(a.name)}</strong>
+              <span style="color: var(--text-muted); font-size: 0.76rem; margin-left: 6px;">(${escapeHtml(univid)})</span>
+              <div style="font-size: 0.74rem; color: var(--navy-primary);">${escapeHtml(a.email)}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <code>${a.id}</code>
+              <button class="btn-micro-action" onclick="openSingleGmailDispatch('${a.id}')" title="Send individual mail">✉️ Mail</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  const modal = document.getElementById('batch-dispatch-modal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeBatchDispatchModal() {
+  const modal = document.getElementById('batch-dispatch-modal');
+  if (modal) modal.classList.remove('open');
+}
+
+function copyAllApprovedEmailsBCC() {
+  const approved = getApprovedCandidates();
+  if (approved.length === 0) {
+    alert("No approved candidate emails found.");
+    return;
+  }
+
+  const emails = approved.map(a => a.email).filter(Boolean).join(', ');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(emails).then(() => {
+      showTransientToast(`📋 Copied ${approved.length} approved emails to clipboard!`);
+    }).catch(() => fallbackCopyText(emails));
+  } else {
+    fallbackCopyText(emails);
+  }
+}
+
+function launchBatchGmailCompose() {
+  const approved = getApprovedCandidates();
+  if (approved.length === 0) {
+    alert("No approved candidates available.");
+    return;
+  }
+
+  const bccList = approved.map(a => a.email).filter(Boolean).join(',');
+  const subject = `Official Entry Passes & Admission Guidelines - PAF-IAST Science Society 2-Day Seminar Series`;
+  
+  const body = `Dear Participants,
+
+Congratulations! Your registrations and payments for the PAF-IAST Science Society 2-Day Seminar Series have been verified and approved.
+
+Official Event & Venue Schedule:
+-----------------------------------------------------------
+• Venue: B2 MPH (Multipurpose Hall), Pak-Austria Fachhochschule: Institute of Applied Sciences and Technology (PAF-IAST), Mang, Haripur
+
+• Day 1 (Wednesday, 4th Nov 2026 • 2:00 – 4:00 PM):
+  "The Silent Pandemic: Antimicrobial Resistance and Its Global Health Implications"
+  Speaker: Dr. Hamad Ali
+
+• Day 2 (Thursday, 5th Nov 2026 • 2:00 – 4:00 PM):
+  "Artificial Intelligence in Healthcare: Smart Medicine, Clinical Research & Biotechnology"
+  Speaker: Dr. Shah Faisal
+
+Gate Admission Instructions:
+Please ensure you have your official seminar pass ready on your phone or printed. Each participant's individual pass will be scanned at the B2 MPH hall entrance.
+
+We look forward to hosting you for two days of world-class scientific discussions and academic exploration!
+
+Warm regards,
+PAF-IAST Science Society Organizing Committee
+Pak-Austria Fachhochschule: Institute of Applied Sciences and Technology (PAF-IAST)`;
+
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&bcc=${encodeURIComponent(bccList)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.open(gmailUrl, '_blank');
+  showTransientToast(`🚀 Gmail Compose launched with ${approved.length} approved candidates in BCC!`);
+}
+
+async function downloadAllApprovedTickets() {
+  const approved = getApprovedCandidates();
+  if (approved.length === 0) {
+    alert("No approved candidates to download.");
+    return;
+  }
+
+  showTransientToast(`Starting download of ${approved.length} ticket PDFs...`);
+
+  for (let i = 0; i < approved.length; i++) {
+    const candidate = approved[i];
+    await generateAttendeeTicketPDF(candidate);
+    showTransientToast(`Downloaded (${i + 1}/${approved.length}): ${candidate.name}`);
+    if (i < approved.length - 1) {
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  showTransientToast(`✅ All ${approved.length} tickets downloaded successfully!`);
+}
+
