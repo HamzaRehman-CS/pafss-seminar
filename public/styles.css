@@ -924,6 +924,13 @@ html, body {
   flex-shrink: 0;
 }
 
+.payment-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .payment-account-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -945,6 +952,12 @@ html, body {
 }
 
 @media (max-width: 600px) {
+  .payment-header-badges {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+
   .payment-account-grid-three {
     grid-template-columns: 1fr;
     gap: 8px;
