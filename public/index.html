@@ -265,6 +265,37 @@
             <input type="email" id="form-email" required class="clean-glass-input" autocomplete="email">
           </div>
 
+          <!-- Official Easypaisa Payment Account Details -->
+          <div class="payment-instructions-card">
+            <div class="payment-method-header">
+              <div class="payment-method-info">
+                <span class="payment-icon-chip">📲</span>
+                <div>
+                  <strong class="payment-account-heading">Official Easypaisa Account</strong>
+                  <span class="payment-account-sub">Transfer fee &amp; upload proof below</span>
+                </div>
+              </div>
+              <span class="badge-easypaisa">Easypaisa</span>
+            </div>
+
+            <div class="payment-account-grid">
+              <div class="account-field-box">
+                <span class="account-field-label">Account Title</span>
+                <strong class="account-field-value">Huzaifa Shahzad</strong>
+              </div>
+
+              <div class="account-field-box">
+                <span class="account-field-label">Easypaisa Number</span>
+                <div class="account-number-row">
+                  <strong class="account-number-text" id="easypaisa-acc-num">03400099776</strong>
+                  <button type="button" class="btn-copy-acc-num" id="btn-copy-acc-num" onclick="copyPaymentNumber()" title="Copy account number">
+                    📋 Copy
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Payment Verification Screenshot Upload (Up to 10MB) -->
           <div class="glass-form-group">
             <label class="glass-field-label">Payment Verification Proof <span class="req">*</span></label>

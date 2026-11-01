@@ -104,6 +104,48 @@ function fallbackCopy(text) {
   showCopyFeedback();
 }
 
+// Copy Easypaisa Payment Number to Clipboard
+function copyPaymentNumber() {
+  const num = '03400099776';
+  const btn = document.getElementById('btn-copy-acc-num');
+
+  const showFeedback = () => {
+    if (btn) {
+      const origHtml = btn.innerHTML;
+      btn.innerHTML = "✅ Copied!";
+      btn.style.background = "#059669";
+      btn.style.color = "#FFFFFF";
+      btn.style.borderColor = "#059669";
+      setTimeout(() => {
+        btn.innerHTML = origHtml;
+        btn.style.background = "#FFFFFF";
+        btn.style.color = "#15803D";
+        btn.style.borderColor = "#86EFAC";
+      }, 2000);
+    }
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(num).then(showFeedback).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = num;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showFeedback();
+    });
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = num;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showFeedback();
+  }
+}
+
 // Close Success Confirmation Modal
 function closeSuccessModal() {
   const modal = document.getElementById('success-modal');

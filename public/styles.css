@@ -855,6 +855,134 @@ html, body {
 }
 
 /* ===================================================================
+   EASYPAISA PAYMENT INSTRUCTIONS CARD (ZERO-LAG & CLEAN)
+   =================================================================== */
+.payment-instructions-card {
+  background: #F0FDF4;
+  border: 1.5px solid #86EFAC;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  text-align: left;
+}
+
+.payment-method-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #DCFCE7;
+  margin-bottom: 10px;
+}
+
+.payment-method-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.payment-icon-chip {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.payment-account-heading {
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: #166534;
+  display: block;
+}
+
+.payment-account-sub {
+  font-size: 0.72rem;
+  color: #15803D;
+  display: block;
+}
+
+.badge-easypaisa {
+  background: #059669;
+  color: #FFFFFF;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.payment-account-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.account-field-box {
+  background: #FFFFFF;
+  border: 1px solid #BBF7D0;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account-field-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #15803D;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.account-field-value {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--navy-dark);
+}
+
+.account-number-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.account-number-text {
+  font-size: 0.95rem;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  color: #166534;
+  letter-spacing: 0.04em;
+}
+
+.btn-copy-acc-num {
+  background: #FFFFFF;
+  border: 1px solid #86EFAC;
+  color: #15803D;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn-copy-acc-num:hover {
+  background: #DCFCE7;
+  color: #166534;
+}
+
+@media (max-width: 480px) {
+  .payment-account-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+/* ===================================================================
    REGISTRATION SUCCESS MODAL (NO IMMEDIATE TICKET, CLEAR GMAIL NOTICE)
    =================================================================== */
 .success-modal-box {
