@@ -178,7 +178,7 @@ async function handleRegistrationSubmit(e) {
 
   // Enforce payment receipt upload
   if (!currentReceiptData) {
-    alert("Please upload a screenshot or photo of your 300 PKR payment verification to complete registration.");
+    alert("Please upload a clear screenshot or photo of your payment verification receipt to complete registration.");
     const dropzone = document.getElementById('payment-dropzone');
     if (dropzone) {
       dropzone.style.borderColor = '#DC2626';
@@ -239,6 +239,6 @@ async function handleRegistrationSubmit(e) {
     alert(err.message || 'Error occurred during registration');
   } finally {
     if (submitBtn) submitBtn.disabled = false;
-    if (submitText) submitText.innerText = "Register & Upload Verification (300 PKR)";
+    if (submitText) submitText.innerText = "Register & Upload Verification";
   }
 }
