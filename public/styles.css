@@ -912,10 +912,43 @@ html, body {
   flex-shrink: 0;
 }
 
+.badge-easypaisa-fee {
+  background: #DCFCE7;
+  color: #166534;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid #86EFAC;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
 .payment-account-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+.payment-account-grid-three {
+  grid-template-columns: 1.1fr 1.3fr 0.8fr;
+  gap: 8px;
+}
+
+.account-fee-highlight {
+  background: #ECFDF5;
+  border-color: #6EE7B7;
+}
+
+.account-fee-highlight .account-field-label {
+  color: #047857;
+}
+
+@media (max-width: 600px) {
+  .payment-account-grid-three {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
 }
 
 .account-field-box {
