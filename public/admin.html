@@ -38,6 +38,7 @@
       </div>
 
       <div style="display: flex; align-items: center; gap: 10px;">
+        <span id="nav-active-day-badge" class="active-day-pill day-1" style="font-size: 0.74rem; padding: 4px 10px; display: none;">☀️ Day 1 Gate Active</span>
         <span id="admin-clock" class="admin-live-clock" style="margin-right: 6px;">--:--:--</span>
         <a href="/" class="glass-btn-subtle" style="font-size: 0.8rem; padding: 7px 14px;">
           ← Public Portal
@@ -104,7 +105,7 @@
         <div class="admin-stat-card">
           <span class="stat-card-label">Admitted at Gate</span>
           <span class="stat-card-number" id="dash-checked-count" style="color: var(--navy-primary);">0</span>
-          <span class="stat-card-sub">Scanned at B2 MPH Entrance</span>
+          <span class="stat-card-sub" id="dash-attendance-breakdown">Day 1: 0 • Day 2: 0 (Full: 0)</span>
         </div>
       </div>
 
@@ -133,8 +134,11 @@
             </div>
             
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button class="navy-primary-btn" onclick="exportFullAttendanceCSV()" style="padding: 7px 14px; font-size: 0.8rem;">
+                📊 Export 2-Day Attendance (CSV)
+              </button>
               <button class="glass-btn-subtle" onclick="exportDirectoryCSV()" style="padding: 7px 14px; font-size: 0.8rem;">
-                📊 Export CSV
+                📄 Export All (CSV)
               </button>
               <button class="glass-btn-danger" onclick="confirmDeleteAllCandidates()" style="padding: 7px 14px; font-size: 0.8rem;">
                 🗑️ Delete All Candidates
@@ -165,7 +169,9 @@
                   <th>Contact Info</th>
                   <th>Payment Proof</th>
                   <th>Payment Status</th>
-                  <th>Gate Status</th>
+                  <th>Day 1 Check-In</th>
+                  <th>Day 2 Check-In</th>
+                  <th>Total / Eligibility</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -234,6 +240,27 @@
 
       <!-- TAB 3: LIVE GATE QR SCANNER & SCAN HISTORY -->
       <section id="tab-pane-scanner" class="admin-tab-pane" style="display: none;">
+        
+        <!-- Active Event Day Controller Bar -->
+        <div class="active-day-control-card" style="margin-bottom: 16px; padding: 14px 18px; background: #FFFFFF; border: 1.5px solid var(--border-navy); border-radius: var(--radius-card); box-shadow: var(--shadow-sm);">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="scanner-day-indicator" class="active-day-pill day-1">☀️ Active Gate Mode: DAY 1</span>
+                <span id="scanner-day-badge-hint" style="font-size: 0.82rem; font-weight: 700; color: var(--navy-primary);">Keynote: Dr. Hamad Ali (AMR)</span>
+              </div>
+              <p style="font-size: 0.8rem; color: var(--text-body); margin: 5px 0 0;">
+                All verified candidates can scan once per day. When Day 1 finishes, click the button to start Day 2 admissions.
+              </p>
+            </div>
+            <div>
+              <button id="btn-toggle-event-day" class="navy-primary-btn" onclick="toggleActiveEventDay()" style="font-size: 0.85rem; padding: 9px 18px; display: inline-flex; align-items: center; gap: 6px;">
+                <span>🌅 End Day 1 &amp; Start Day 2</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="admin-split-workspace">
           
           <!-- Left: Scanner Viewfinder & Controls -->

@@ -118,6 +118,9 @@ function saveReceiptImage(base64Data, attendeeId) {
   }
 }
 
+// In-memory active event day (1 = Day 1: Dr. Hamad Ali, 2 = Day 2: Dr. Shah Faisal)
+let currentActiveDay = 1;
+
 // Map PostgreSQL row to client attendee object
 function mapAttendee(row) {
   if (!row) return null;
@@ -147,6 +150,16 @@ function mapAttendee(row) {
     checked_in_at: row.checked_in_at,
     scanCount: Number(row.scan_count || 0),
     scan_count: Number(row.scan_count || 0),
+    day1CheckedIn: Boolean(row.day1_checked_in),
+    day1_checked_in: Boolean(row.day1_checked_in),
+    day1CheckedInAt: row.day1_checked_in_at,
+    day1_checked_in_at: row.day1_checked_in_at,
+    day2CheckedIn: Boolean(row.day2_checked_in),
+    day2_checked_in: Boolean(row.day2_checked_in),
+    day2CheckedInAt: row.day2_checked_in_at,
+    day2_checked_in_at: row.day2_checked_in_at,
+    totalAttendance: Number(row.total_attendance || (row.checked_in ? 1 : 0)),
+    total_attendance: Number(row.total_attendance || (row.checked_in ? 1 : 0)),
     paymentStatus: row.payment_status || 'pending',
     payment_status: row.payment_status || 'pending',
     paymentAmount: row.payment_amount || '300 PKR',
@@ -221,8 +234,36 @@ async function initDb() {
       ALTER TABLE attendees ADD COLUMN IF NOT EXISTS payment_amount VARCHAR(64) DEFAULT '300 PKR';
       ALTER TABLE attendees ADD COLUMN IF NOT EXISTS payment_receipt TEXT;
       ALTER TABLE attendees ADD COLUMN IF NOT EXISTS payment_verified_at TIMESTAMPTZ;
+
+      ALTER TABLE attendees ADD COLUMN IF NOT EXISTS day1_checked_in BOOLEAN DEFAULT FALSE;
+      ALTER TABLE attendees ADD COLUMN IF NOT EXISTS day1_checked_in_at TIMESTAMPTZ;
+      ALTER TABLE attendees ADD COLUMN IF NOT EXISTS day2_checked_in BOOLEAN DEFAULT FALSE;
+      ALTER TABLE attendees ADD COLUMN IF NOT EXISTS day2_checked_in_at TIMESTAMPTZ;
+      ALTER TABLE attendees ADD COLUMN IF NOT EXISTS total_attendance INTEGER DEFAULT 0;
+
+      CREATE TABLE IF NOT EXISTS seminar_settings (
+        key VARCHAR(64) PRIMARY KEY,
+        value VARCHAR(255)
+      );
+      INSERT INTO seminar_settings (key, value) VALUES ('active_day', '1') ON CONFLICT (key) DO NOTHING;
     `);
-    console.log('✅ Neon Cloud Database connected and tables verified.');
+
+    // Migrate any past check-ins to day1
+    await pool.query(`
+      UPDATE attendees 
+      SET day1_checked_in = true, 
+          day1_checked_in_at = checked_in_at, 
+          total_attendance = 1 
+      WHERE checked_in = true AND (day1_checked_in IS NULL OR day1_checked_in = false);
+    `);
+
+    // Load active day from settings
+    const daySetting = await pool.query("SELECT value FROM seminar_settings WHERE key = 'active_day'");
+    if (daySetting.rows.length > 0) {
+      currentActiveDay = parseInt(daySetting.rows[0].value, 10) || 1;
+    }
+
+    console.log(`✅ Neon Cloud Database connected and tables verified. Active Event Gate Mode: DAY ${currentActiveDay}`);
   } catch (err) {
     console.error('⚠️ Neon DB init error:', err.message);
   }
@@ -233,18 +274,48 @@ initDb();
 // API ROUTES
 // ==========================================
 
-// 1. Get Live Statistics (Total, Verified, Pending, Admitted, Revenue)
+// Active Day Control Endpoints
+app.get('/api/admin/active-day', (req, res) => {
+  return res.json({ success: true, activeDay: currentActiveDay });
+});
+
+app.post('/api/admin/set-active-day', async (req, res) => {
+  const { day } = req.body;
+  const newDay = Number(day) === 2 ? 2 : 1;
+  currentActiveDay = newDay;
+
+  try {
+    await pool.query(
+      `INSERT INTO seminar_settings (key, value) VALUES ('active_day', $1) 
+       ON CONFLICT (key) DO UPDATE SET value = $1`,
+      [String(newDay)]
+    );
+    console.log(`Gate scanner active day switched to: DAY ${newDay}`);
+    return res.json({ success: true, activeDay: currentActiveDay });
+  } catch (err) {
+    console.error("Error setting active day:", err);
+    return res.json({ success: true, activeDay: currentActiveDay });
+  }
+});
+
+// 1. Get Live Statistics (Total, Verified, Pending, Admitted, Revenue, Day 1 & Day 2)
 app.get('/api/stats', async (req, res) => {
   try {
     const totalRes = await pool.query("SELECT COUNT(*) FROM attendees");
     const verifiedRes = await pool.query("SELECT COUNT(*) FROM attendees WHERE payment_status = 'verified'");
     const pendingRes = await pool.query("SELECT COUNT(*) FROM attendees WHERE payment_status != 'verified'");
     const checkedRes = await pool.query("SELECT COUNT(*) FROM attendees WHERE checked_in = true");
+    const day1Res = await pool.query("SELECT COUNT(*) FROM attendees WHERE day1_checked_in = true");
+    const day2Res = await pool.query("SELECT COUNT(*) FROM attendees WHERE day2_checked_in = true");
+    const fullRes = await pool.query("SELECT COUNT(*) FROM attendees WHERE total_attendance >= 2");
 
     const totalCount = parseInt(totalRes.rows[0].count, 10);
     const verifiedCount = parseInt(verifiedRes.rows[0].count, 10);
     const pendingCount = parseInt(pendingRes.rows[0].count, 10);
     const checkedCount = parseInt(checkedRes.rows[0].count, 10);
+    const day1Count = parseInt(day1Res.rows[0].count, 10);
+    const day2Count = parseInt(day2Res.rows[0].count, 10);
+    const fullAttendanceCount = parseInt(fullRes.rows[0].count, 10);
     const totalRevenue = verifiedCount * 300;
 
     return res.json({
@@ -252,22 +323,33 @@ app.get('/api/stats', async (req, res) => {
       verifiedCount,
       pendingCount,
       checkedInCount: checkedCount,
+      day1Count,
+      day2Count,
+      fullAttendanceCount,
+      activeDay: currentActiveDay,
       totalRevenue: `${totalRevenue.toLocaleString()} PKR`
     });
   } catch (e) {
     console.warn("DB stats error, falling back to local cache:", e.message);
     const attendees = readLocalAttendees();
-    let verified = 0, pending = 0, checked = 0;
+    let verified = 0, pending = 0, checked = 0, d1 = 0, d2 = 0, full = 0;
     for (const a of attendees) {
       if (a.paymentStatus === 'verified' || a.payment_status === 'verified') verified++;
       else pending++;
       if (a.checkedIn || a.checked_in) checked++;
+      if (a.day1CheckedIn || a.day1_checked_in) d1++;
+      if (a.day2CheckedIn || a.day2_checked_in) d2++;
+      if ((a.totalAttendance || a.total_attendance) >= 2) full++;
     }
     return res.json({
       totalAttendees: attendees.length,
       verifiedCount: verified,
       pendingCount: pending,
       checkedInCount: checked,
+      day1Count: d1,
+      day2Count: d2,
+      fullAttendanceCount: full,
+      activeDay: currentActiveDay,
       totalRevenue: `${(verified * 300).toLocaleString()} PKR`
     });
   }
@@ -658,25 +740,31 @@ app.post('/api/scan', async (req, res) => {
       });
     }
 
-    // STEP B: ALREADY SCANNED ONCE (Duplicate alert with person's name)
-    if (isAlreadyChecked) {
+    // STEP B & C: 2-DAY ATTENDANCE LOGIC (DAY 1 vs DAY 2)
+    const isDay1 = (currentActiveDay === 1);
+    const alreadyScannedToday = isDay1 ? Boolean(attendeeRow.day1_checked_in) : Boolean(attendeeRow.day2_checked_in);
+    const dayLabel = isDay1 ? "Day 1 (AMR - Dr. Hamad Ali)" : "Day 2 (AI Health - Dr. Shah Faisal)";
+
+    if (alreadyScannedToday) {
+      // DUPLICATE SCAN FOR TODAY'S ACTIVE DAY
       const newScanCount = Number(attendeeRow.scan_count || 1) + 1;
       await pool.query(
         "UPDATE attendees SET scan_count = $1 WHERE id = $2",
         [newScanCount, attendeeRow.id]
       );
 
-      const timeFormatted = attendeeRow.checked_in_at 
-        ? new Date(attendeeRow.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
-        : 'Earlier';
+      const checkInTime = isDay1 ? attendeeRow.day1_checked_in_at : attendeeRow.day2_checked_in_at;
+      const timeFormatted = checkInTime 
+        ? new Date(checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
+        : 'Earlier today';
 
-      const dupMessage = `Already scanned! ${attendeeRow.name} was already admitted at ${timeFormatted} (Scan #${newScanCount})`;
+      const dupMessage = `Already scanned today! ${attendeeRow.name} was already admitted for Day ${currentActiveDay} at ${timeFormatted} (Attempt #${newScanCount})`;
 
       try {
         await pool.query(
           `INSERT INTO scan_history (scan_id, scanned_at, ticket_id, attendee_name, university_id, seminar, status, message)
            VALUES ($1, NOW(), $2, $3, $4, $5, 'ALREADY_SCANNED', $6)`,
-          [scanId, attendeeRow.id, attendeeRow.name, attendeeRow.university_id, attendeeRow.speaker, dupMessage]
+          [scanId, attendeeRow.id, attendeeRow.name, attendeeRow.university_id, dayLabel, dupMessage]
         );
       } catch (e) {
         console.warn("Scan history insert error:", e.message);
@@ -689,7 +777,7 @@ app.post('/api/scan', async (req, res) => {
         ticketId: attendeeRow.id,
         attendeeName: attendeeRow.name,
         universityId: attendeeRow.university_id,
-        seminar: attendeeRow.speaker,
+        seminar: dayLabel,
         status: "ALREADY_SCANNED",
         message: dupMessage
       };
@@ -704,68 +792,97 @@ app.post('/api/scan', async (req, res) => {
         success: true,
         status: "ALREADY_SCANNED",
         isDuplicate: true,
-        message: `⚠️ Already Scanned! ${attendeeRow.name} was already admitted at ${timeFormatted}.`,
-        checkedInAt: attendeeRow.checked_in_at,
+        activeDay: currentActiveDay,
+        message: `⚠️ Already Scanned! ${attendeeRow.name} was already admitted for Day ${currentActiveDay} at ${timeFormatted}.`,
+        checkedInAt: checkInTime,
         scanCount: newScanCount,
         attendee: updatedObj,
         scanLog: dupLog
       });
+
+    } else {
+      // FIRST SCAN FOR TODAY'S ACTIVE DAY
+      const hasOtherDay = isDay1 ? Boolean(attendeeRow.day2_checked_in) : Boolean(attendeeRow.day1_checked_in);
+      const newTotalAttendance = hasOtherDay ? 2 : 1;
+
+      let updateQuery;
+      if (isDay1) {
+        updateQuery = `
+          UPDATE attendees 
+          SET day1_checked_in = true, 
+              day1_checked_in_at = NOW(), 
+              checked_in = true, 
+              checked_in_at = COALESCE(checked_in_at, NOW()), 
+              scan_count = COALESCE(scan_count, 0) + 1,
+              total_attendance = $1
+          WHERE id = $2 
+          RETURNING *`;
+      } else {
+        updateQuery = `
+          UPDATE attendees 
+          SET day2_checked_in = true, 
+              day2_checked_in_at = NOW(), 
+              checked_in = true, 
+              checked_in_at = COALESCE(checked_in_at, NOW()), 
+              scan_count = COALESCE(scan_count, 0) + 1,
+              total_attendance = $1
+          WHERE id = $2 
+          RETURNING *`;
+      }
+
+      const updateRes = await pool.query(updateQuery, [newTotalAttendance, attendeeRow.id]);
+      const verifiedObj = mapAttendee(updateRes.rows[0]);
+
+      let succMessage = `Admitted for Day ${currentActiveDay}: ${verifiedObj.name}. Total Attendance: ${newTotalAttendance}/2`;
+      if (newTotalAttendance === 2) {
+        succMessage += " (Full 2-Day Attendance - Qualified for Quizzes & Certificates!)";
+      }
+
+      try {
+        await pool.query(
+          `INSERT INTO scan_history (scan_id, scanned_at, ticket_id, attendee_name, university_id, seminar, status, message)
+           VALUES ($1, NOW(), $2, $3, $4, $5, 'FIRST_CHECKIN', $6)`,
+          [scanId, verifiedObj.id, verifiedObj.name, verifiedObj.universityId, dayLabel, succMessage]
+        );
+      } catch (e) {
+        console.warn("Scan history insert error:", e.message);
+      }
+
+      const successLog = {
+        scanId,
+        scanned_at: new Date().toISOString(),
+        timestamp: new Date().toISOString(),
+        ticketId: verifiedObj.id,
+        attendeeName: verifiedObj.name,
+        universityId: verifiedObj.universityId,
+        seminar: dayLabel,
+        status: "FIRST_CHECKIN",
+        message: succMessage
+      };
+
+      const localLogs = readLocalScanHistory();
+      localLogs.unshift(successLog);
+      writeLocalScanHistory(localLogs.slice(0, 150));
+
+      // Sync local cache
+      const localAttendees = readLocalAttendees();
+      const idx = localAttendees.findIndex(a => a.id === verifiedObj.id);
+      if (idx !== -1) {
+        localAttendees[idx] = verifiedObj;
+        writeLocalAttendees(localAttendees);
+      }
+
+      return res.json({
+        success: true,
+        status: "FIRST_CHECKIN",
+        isDuplicate: false,
+        activeDay: currentActiveDay,
+        totalAttendance: newTotalAttendance,
+        message: `✅ Admitted: ${verifiedObj.name} (Day ${currentActiveDay} Recorded • Total: ${newTotalAttendance}/2)`,
+        attendee: verifiedObj,
+        scanLog: successLog
+      });
     }
-
-    // STEP C: FIRST TIME SCAN & PAYMENT VERIFIED -> Verified & Admitted in Green Color
-    const updateRes = await pool.query(
-      `UPDATE attendees 
-       SET checked_in = true, checked_in_at = NOW(), scan_count = 1 
-       WHERE id = $1 
-       RETURNING *`,
-      [attendeeRow.id]
-    );
-
-    const verifiedObj = mapAttendee(updateRes.rows[0]);
-    const succMessage = `Admitted: ${verifiedObj.name} has been scanned and recorded in the attendance list (300 PKR Verified).`;
-
-    try {
-      await pool.query(
-        `INSERT INTO scan_history (scan_id, scanned_at, ticket_id, attendee_name, university_id, seminar, status, message)
-         VALUES ($1, NOW(), $2, $3, $4, $5, 'FIRST_CHECKIN', $6)`,
-        [scanId, verifiedObj.id, verifiedObj.name, verifiedObj.universityId, verifiedObj.speaker, succMessage]
-      );
-    } catch (e) {
-      console.warn("Scan history insert error:", e.message);
-    }
-
-    const successLog = {
-      scanId,
-      scanned_at: verifiedObj.checkedInAt,
-      timestamp: verifiedObj.checkedInAt,
-      ticketId: verifiedObj.id,
-      attendeeName: verifiedObj.name,
-      universityId: verifiedObj.universityId,
-      seminar: verifiedObj.speaker,
-      status: "FIRST_CHECKIN",
-      message: succMessage
-    };
-
-    const localLogs = readLocalScanHistory();
-    localLogs.unshift(successLog);
-    writeLocalScanHistory(localLogs.slice(0, 150));
-
-    // Update local attendees cache
-    const localAttendees = readLocalAttendees();
-    const idx = localAttendees.findIndex(a => a.id === verifiedObj.id);
-    if (idx !== -1) {
-      localAttendees[idx] = verifiedObj;
-      writeLocalAttendees(localAttendees);
-    }
-
-    return res.json({
-      success: true,
-      status: "FIRST_CHECKIN",
-      isDuplicate: false,
-      message: `✅ Admitted: ${verifiedObj.name} (300 PKR Verified)`,
-      attendee: verifiedObj,
-      scanLog: successLog
-    });
 
   } catch (err) {
     console.error("Scan processing error:", err);

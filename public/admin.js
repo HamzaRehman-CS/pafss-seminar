@@ -18,6 +18,7 @@ let html5Scanner = null;
 let isScannerRunning = false;
 let currentFilter = 'all';
 let currentActiveReceiptAttendee = null;
+let currentActiveDay = 1;
 
 // State for 10-Second Pending Deletion Revoke System
 let pendingDeletion = null; // { type: 'single' | 'bulk', id, name, candidate, index, allCandidates, timeoutId, intervalId }
@@ -237,12 +238,75 @@ function updateStatsUI(stats) {
   const sRevenue = document.getElementById('dash-revenue-text');
   const sPending = document.getElementById('dash-pending-count');
   const sChecked = document.getElementById('dash-checked-count');
+  const sBreakdown = document.getElementById('dash-attendance-breakdown');
 
   if (sTotal) sTotal.innerText = stats.totalAttendees || 0;
   if (sVerified) sVerified.innerText = stats.verifiedCount || 0;
   if (sRevenue) sRevenue.innerText = `Total: ${stats.totalRevenue || '0 PKR'}`;
   if (sPending) sPending.innerText = stats.pendingCount || 0;
   if (sChecked) sChecked.innerText = stats.checkedInCount || 0;
+  if (sBreakdown) {
+    sBreakdown.innerText = `Day 1: ${stats.day1Count || 0} • Day 2: ${stats.day2Count || 0} (Full: ${stats.fullAttendanceCount || 0})`;
+  }
+
+  if (stats.activeDay) {
+    currentActiveDay = stats.activeDay;
+    updateActiveDayUI(stats.activeDay);
+  }
+}
+
+function updateActiveDayUI(day) {
+  const isDay2 = Number(day) === 2;
+  const navBadge = document.getElementById('nav-active-day-badge');
+  const indicator = document.getElementById('scanner-day-indicator');
+  const hint = document.getElementById('scanner-day-badge-hint');
+  const toggleBtn = document.getElementById('btn-toggle-event-day');
+
+  if (navBadge) {
+    navBadge.style.display = 'inline-flex';
+    navBadge.className = `active-day-pill ${isDay2 ? 'day-2' : 'day-1'}`;
+    navBadge.innerText = isDay2 ? '🌙 Day 2 Gate Active' : '☀️ Day 1 Gate Active';
+  }
+
+  if (indicator) {
+    indicator.className = `active-day-pill ${isDay2 ? 'day-2' : 'day-1'}`;
+    indicator.innerText = isDay2 ? '🌙 Active Gate Mode: DAY 2' : '☀️ Active Gate Mode: DAY 1';
+  }
+
+  if (hint) {
+    hint.innerText = isDay2 ? 'Keynote: Dr. Shah Faisal (AI Health)' : 'Keynote: Dr. Hamad Ali (AMR)';
+  }
+
+  if (toggleBtn) {
+    toggleBtn.innerHTML = isDay2 
+      ? '<span>☀️ Switch Back to Day 1</span>' 
+      : '<span>🌅 End Day 1 &amp; Start Day 2</span>';
+  }
+}
+
+async function toggleActiveEventDay() {
+  const targetDay = currentActiveDay === 1 ? 2 : 1;
+  const promptMsg = currentActiveDay === 1 
+    ? "Are you sure you want to end Day 1 and activate Day 2 gate scanning?\n\nApproved participants can now be scanned again for Day 2 attendance." 
+    : "Switch gate scanner mode back to Day 1?";
+
+  if (!confirm(promptMsg)) return;
+
+  try {
+    const res = await fetch('/api/admin/set-active-day', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ day: targetDay })
+    });
+    const data = await res.json();
+    currentActiveDay = data.activeDay || targetDay;
+    updateActiveDayUI(currentActiveDay);
+    playSound('success');
+    showTransientToast(`Gate scanning mode switched to Day ${currentActiveDay}!`);
+    fetchDashboardData();
+  } catch (err) {
+    alert("Could not switch active event day.");
+  }
 }
 
 function updateStatsFromLocal() {
@@ -294,7 +358,7 @@ function renderDirectoryTable(attendees) {
   if (!tbody) return;
 
   if (!attendees || attendees.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">No candidate records found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 32px;">No candidate records found.</td></tr>`;
     return;
   }
 
@@ -342,10 +406,28 @@ function renderDirectoryTable(attendees) {
       `;
     }
 
-    // Gate Status Badge
-    const gateBadge = a.checkedIn
-      ? `<span class="h-badge-tag tag-first">Admitted (${new Date(a.checkedInAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})</span>`
-      : `<span class="h-badge-tag" style="background:var(--card-subtle); color:var(--text-muted);">Not Checked In</span>`;
+    // 2-Day Attendance Badges & Time
+    const d1 = (a.day1CheckedIn || a.day1_checked_in);
+    const d1Time = (a.day1CheckedInAt || a.day1_checked_in_at);
+    const d1Badge = d1
+      ? `<span class="attendance-chip chip-present">✓ Present (${new Date(d1Time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})})</span>`
+      : `<span class="attendance-chip chip-absent">Not Scanned</span>`;
+
+    const d2 = (a.day2CheckedIn || a.day2_checked_in);
+    const d2Time = (a.day2CheckedInAt || a.day2_checked_in_at);
+    const d2Badge = d2
+      ? `<span class="attendance-chip chip-present">✓ Present (${new Date(d2Time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})})</span>`
+      : `<span class="attendance-chip chip-absent">Not Scanned</span>`;
+
+    const totalAtt = Number(a.totalAttendance || a.total_attendance || (d1 && d2 ? 2 : (d1 || d2 ? 1 : 0)));
+    let totalBadge = '';
+    if (totalAtt >= 2) {
+      totalBadge = `<span class="attendance-chip chip-full" title="Qualified for Quizzes & Physical Certificates">🌟 2/2 Qualified</span>`;
+    } else if (totalAtt === 1) {
+      totalBadge = `<span class="attendance-chip chip-partial" title="Attend Day 2 to qualify">1/2 Partial</span>`;
+    } else {
+      totalBadge = `<span class="attendance-chip chip-zero">0/2 Absent</span>`;
+    }
 
     const univid = a.universityId || a.university_id || 'N/A';
 
@@ -362,7 +444,9 @@ function renderDirectoryTable(attendees) {
         </td>
         <td>${proofHtml}</td>
         <td>${payHtml}</td>
-        <td>${gateBadge}</td>
+        <td>${d1Badge}</td>
+        <td>${d2Badge}</td>
+        <td>${totalBadge}</td>
         <td>
           <button class="btn-delete-row" onclick="deleteSingleCandidate('${a.id}', '${a.name.replace(/'/g, "\\'")}')" title="Delete Candidate">
             🗑️ Delete
@@ -693,6 +777,76 @@ function exportDirectoryCSV() {
   document.body.removeChild(link);
 }
 
+// Export Complete 2-Day Attendance Sheet with Quizzes & Certificates Eligibility
+function exportFullAttendanceCSV() {
+  if (!localAttendeeCache || localAttendeeCache.length === 0) {
+    alert("No attendee records available to export.");
+    return;
+  }
+
+  const headers = [
+    "Ticket ID",
+    "Candidate Name",
+    "University ID",
+    "Personal Gmail",
+    "Phone Number",
+    "Fee Amount",
+    "Payment Verification",
+    "Day 1 Attendance",
+    "Day 1 Check-In Time",
+    "Day 2 Attendance",
+    "Day 2 Check-In Time",
+    "Total Days Attended",
+    "Quiz & Certificate Eligibility",
+    "Registration Timestamp"
+  ];
+
+  const rows = localAttendeeCache.map(a => {
+    const isVerified = (a.paymentStatus === 'verified' || a.payment_status === 'verified');
+    const d1 = Boolean(a.day1CheckedIn || a.day1_checked_in);
+    const d1Time = (a.day1CheckedInAt || a.day1_checked_in_at);
+    const d2 = Boolean(a.day2CheckedIn || a.day2_checked_in);
+    const d2Time = (a.day2CheckedInAt || a.day2_checked_in_at);
+    const totalAtt = Number(a.totalAttendance || a.total_attendance || (d1 && d2 ? 2 : (d1 || d2 ? 1 : 0)));
+    
+    let eligibility = "NOT ELIGIBLE (Absent)";
+    if (totalAtt >= 2 && isVerified) {
+      eligibility = "QUALIFIED (Both Days Attended & Paid - Eligible for Quizzes & Physical Certificate)";
+    } else if (totalAtt === 1) {
+      eligibility = "PARTIAL (Attended 1 Day Only - Must complete Day 2)";
+    } else if (!isVerified) {
+      eligibility = "INELIGIBLE (Payment Pending Review)";
+    }
+
+    return [
+      `"${a.id}"`,
+      `"${(a.name || '').replace(/"/g, '""')}"`,
+      `"${a.universityId || a.university_id || ''}"`,
+      `"${a.email || ''}"`,
+      `"${a.phone || ''}"`,
+      `"300 PKR"`,
+      `"${isVerified ? 'VERIFIED' : (a.paymentStatus || 'PENDING')}"`,
+      `"${d1 ? 'PRESENT' : 'ABSENT'}"`,
+      `"${d1Time ? new Date(d1Time).toLocaleString() : 'N/A'}"`,
+      `"${d2 ? 'PRESENT' : 'ABSENT'}"`,
+      `"${d2Time ? new Date(d2Time).toLocaleString() : 'N/A'}"`,
+      `"${totalAtt}/2"`,
+      `"${eligibility}"`,
+      `"${a.registeredAt ? new Date(a.registeredAt).toLocaleString() : 'N/A'}"`
+    ];
+  });
+
+  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `PAFSS_2026_Full_2Day_Attendance_Sheet_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 // ===================================================================
 // QR CODE SCANNER (WITH PAYMENT STATUS GATE CHECK)
 // ===================================================================
@@ -783,7 +937,7 @@ async function handleFileQrScan(e) {
 let lastScannedText = '';
 let lastScannedTimestamp = 0;
 
-// Main QR Scan Processor
+// Main QR Scan Processor (2-Day Attendance Engine)
 async function processTicketScan(ticketCode) {
   const now = Date.now();
   if (ticketCode === lastScannedText && now - lastScannedTimestamp < 2500) {
@@ -799,67 +953,6 @@ async function processTicketScan(ticketCode) {
   }
   const cleanUpper = clean.toUpperCase();
 
-  // 1. Instant check in local cache ONLY by ticket ID or ticketHash
-  const localMatch = localAttendeeCache.find(a => 
-    (a.id && a.id.toUpperCase() === cleanUpper) ||
-    (a.ticketHash && a.ticketHash.toUpperCase() === cleanUpper)
-  );
-
-  if (localMatch) {
-    const isVerified = (localMatch.paymentStatus === 'verified' || localMatch.payment_status === 'verified');
-    
-    // Check payment verification
-    if (!isVerified) {
-      playSound('warning');
-      renderPreviewResult({
-        status: 'PAYMENT_PENDING',
-        attendee: localMatch,
-        message: `⚠️ PAYMENT UNVERIFIED! ${localMatch.name} has not cleared 300 PKR fee. Please verify in Admin.`
-      });
-      syncScanToServer(cleanUpper);
-      return;
-    }
-
-    if (localMatch.checkedIn) {
-      // ALREADY SCANNED ONCE (Duplicate alert with person's name)
-      playSound('warning');
-      const timeStr = localMatch.checkedInAt 
-        ? new Date(localMatch.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
-        : 'Earlier';
-      
-      const newCount = Number(localMatch.scanCount || 1) + 1;
-      localMatch.scanCount = newCount;
-
-      renderPreviewResult({
-        status: 'ALREADY_SCANNED',
-        attendee: localMatch,
-        checkedInAt: localMatch.checkedInAt,
-        scanCount: newCount,
-        message: `⚠️ Already Scanned! ${localMatch.name} was already admitted at ${timeStr}.`
-      });
-      syncScanToServer(cleanUpper);
-      return;
-    } else {
-      // FIRST TIME SCAN -> Instant Green Admission with person's name
-      playSound('success');
-      const scanTime = new Date().toISOString();
-      localMatch.checkedIn = true;
-      localMatch.checkedInAt = scanTime;
-      localMatch.scanCount = 1;
-
-      renderPreviewResult({
-        status: 'FIRST_CHECKIN',
-        attendee: localMatch,
-        message: `✅ Admitted: ${localMatch.name} (300 PKR Verified)`
-      });
-
-      renderDirectoryTable(localAttendeeCache);
-      syncScanToServer(cleanUpper);
-      return;
-    }
-  }
-
-  // 2. Query server endpoint
   try {
     const res = await fetch('/api/scan', {
       method: 'POST',
@@ -925,19 +1018,25 @@ function renderPreviewResult(result) {
     const a = result.attendee || {};
     const univid = a.universityId || a.university_id || 'N/A';
     const attendeeName = a.name || 'Participant';
+    const activeDay = result.activeDay || currentActiveDay || 1;
+    const totalAtt = result.totalAttendance || 1;
+    const qualifies = totalAtt >= 2;
 
     banner.innerHTML = `
-      <span>✅ Admitted: ${attendeeName} (300 PKR Verified)</span>
+      <span>✅ Admitted for Day ${activeDay}: ${attendeeName} (300 PKR Verified)</span>
     `;
 
     details.innerHTML = `
       <div style="font-size: 0.95rem; font-weight: 800; color: var(--status-green); margin-bottom: 6px;">
-        ${attendeeName} has been verified and admitted for the 2-Day Seminar Series.
+        ${attendeeName} verified and admitted for Day ${activeDay}!
       </div>
       <div><strong>Candidate:</strong> ${attendeeName} • <strong>Univ ID:</strong> ${univid}</div>
+      <div><strong>Active Gate Mode:</strong> Day ${activeDay} (${activeDay === 1 ? 'Dr. Hamad Ali - AMR' : 'Dr. Shah Faisal - AI Health'})</div>
       <div><strong>Venue:</strong> B2 MPH (Multipurpose Hall)</div>
-      <div><strong>Ticket ID:</strong> <code>${a.id}</code> • <strong>Fee:</strong> 300 PKR Paid</div>
-      <div><strong>Check-In Time:</strong> ${new Date(a.checkedInAt || Date.now()).toLocaleTimeString()}</div>
+      <div><strong>Ticket ID:</strong> <code>${a.id}</code> • <strong>Fee:</strong> 300 PKR Verified</div>
+      <div style="margin-top: 6px; padding: 6px 10px; background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 6px;">
+        <strong>Total Attendance:</strong> ${totalAtt}/2 Days Attended ${qualifies ? '— 🌟 <em>Qualified for Daily Quizzes &amp; Physical Certificate!</em>' : '— <em>(Attend Day 2 to Qualify for Quizzes &amp; Certificates)</em>'}
+      </div>
     `;
 
   } else if (result.status === 'PAYMENT_PENDING') {
@@ -964,22 +1063,24 @@ function renderPreviewResult(result) {
     const a = result.attendee || {};
     const univid = a.universityId || a.university_id || 'N/A';
     const attendeeName = a.name || 'Participant';
+    const activeDay = result.activeDay || currentActiveDay || 1;
     const checkedTime = result.checkedInAt 
       ? new Date(result.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) 
-      : 'Earlier';
+      : 'Earlier today';
 
     banner.innerHTML = `
-      <span>⚠️ Already Scanned: ${attendeeName}</span>
+      <span>⚠️ Already Scanned for Day ${activeDay}: ${attendeeName}</span>
     `;
 
     details.innerHTML = `
       <div style="font-size: 0.95rem; font-weight: 800; color: var(--status-amber); margin-bottom: 6px;">
-        ⚠️ DUPLICATE ENTRY: This pass was already admitted earlier!
+        ⚠️ DUPLICATE ENTRY: This pass was already admitted for Day ${activeDay}!
       </div>
       <div><strong>Candidate:</strong> ${attendeeName} • <strong>Univ ID:</strong> ${univid}</div>
       <div><strong>Ticket ID:</strong> <code>${a.id}</code></div>
-      <div><strong>First Check-In Time:</strong> ${checkedTime}</div>
-      <div><strong>Total Scan Attempts:</strong> ${result.scanCount || a.scanCount || 2}</div>
+      <div><strong>Day ${activeDay} Check-In Time:</strong> ${checkedTime}</div>
+      <div><strong>Total Scan Attempts:</strong> ${result.scanCount || 2}</div>
+      <div style="color: var(--status-red); font-weight: 700; margin-top: 4px;">Candidate has already entered for Day ${activeDay}.</div>
     `;
 
   } else {
